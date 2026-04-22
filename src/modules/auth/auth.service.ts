@@ -13,9 +13,9 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async validateUser(email: string, pass: string): Promise<any> {
+  async validateLocalUser(email: string, pass: string): Promise<any> {
     const user = await this.usersService.findByEmail(email);
-    if (user && (await bcrypt.compare(pass, user.passwordHash))) {
+    if (user && user.passwordHash && (await bcrypt.compare(pass, user.passwordHash))) {
       const { passwordHash, ...result } = user.toObject();
       return result;
     }

@@ -8,8 +8,14 @@ export class User {
   @Prop({ required: true, unique: true })
   email!: string;
 
-  @Prop({ required: true })
-  passwordHash!: string;
+  @Prop({ required: false })
+  passwordHash?: string;
+
+  @Prop({ required: false })
+  googleId?: string;
+
+  @Prop({ type: [String], default: ['local'] })
+  providers!: string[];
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

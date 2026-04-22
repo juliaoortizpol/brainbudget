@@ -5,6 +5,8 @@ import { LocalAuthGuard } from '../../common/guards/local-auth.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
+import { GoogleOauthGuard } from '../../common/guards/google-oauth.guard';
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -17,6 +19,18 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @Post('login')
   async login(@Request() req: any) {
+    return this.authService.login(req.user);
+  }
+
+  @Get('google')
+  @UseGuards(GoogleOauthGuard)
+  async googleAuth() {
+    // Guard redirects
+  }
+
+  @Get('google/callback')
+  @UseGuards(GoogleOauthGuard)
+  async googleAuthRedirect(@Request() req: any) {
     return this.authService.login(req.user);
   }
 

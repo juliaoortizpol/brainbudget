@@ -10,7 +10,7 @@ export class UsersService {
   async create(user: Partial<User>): Promise<UserDocument> {
     const existingUser = await this.findByEmail(user.email!);
     if (existingUser) {
-      throw new ConflictException('Email already in use');
+      throw new ConflictException('If the email is valid, you will receive further instructions');
     }
     const createdUser = new this.userModel(user);
     return createdUser.save();
@@ -22,5 +22,24 @@ export class UsersService {
 
   async findById(id: string): Promise<UserDocument | null> {
     return this.userModel.findById(id).exec();
+  }
+
+  async findOrCreateGoogleUser(email: string, googleId: string): Promise<UserDocument> {
+    const existingUser = await this.findByEmail(email);
+    if (existingUser) {
+      if (!existingUser.providers.includes('google')) {
+        existingUser.providers.push('google');
+        existingUser.googleId = googleId;
+        await existingUser.save();
+      }
+      return existingUser;
+    }
+
+    const newUser = new this.userModel({
+      email,
+      googleId,
+      providers: ['google'],
+    });
+    return newUser.save();
   }
 }
