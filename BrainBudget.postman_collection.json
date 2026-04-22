@@ -113,6 +113,23 @@
               ]
             }
           }
+        },
+        {
+          "name": "5. Google Login",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/google",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "google"
+              ]
+            }
+          }
         }
       ]
     }
