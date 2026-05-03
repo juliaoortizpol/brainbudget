@@ -26,6 +26,12 @@ export class ExpenseCategory {
 
   @Prop({ default: false })
   isSystem?: boolean;
+
+  @Prop({ default: false })
+  isDeleted?: boolean;
+
+  @Prop()
+  deletedAt?: Date;
 }
 
 export const ExpenseCategorySchema = SchemaFactory.createForClass(ExpenseCategory);

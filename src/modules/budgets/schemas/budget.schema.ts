@@ -23,6 +23,12 @@ export class Budget {
 
   @Prop({ required: true, enum: ['draft', 'active', 'closed'] })
   status!: string;
+
+  @Prop({ default: false })
+  isDeleted?: boolean;
+
+  @Prop()
+  deletedAt?: Date;
 }
 
 export const BudgetSchema = SchemaFactory.createForClass(Budget);

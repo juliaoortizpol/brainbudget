@@ -22,6 +22,12 @@ export class BudgetItem {
 
   @Prop()
   alertEnabled?: boolean;
+
+  @Prop({ default: false })
+  isDeleted?: boolean;
+
+  @Prop()
+  deletedAt?: Date;
 }
 
 export const BudgetItemSchema = SchemaFactory.createForClass(BudgetItem);
