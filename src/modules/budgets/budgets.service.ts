@@ -15,10 +15,26 @@ export class BudgetsService {
 
   async create(userId: string, createBudgetDto: CreateBudgetDto): Promise<any> {
     const { items, ...budgetData } = createBudgetDto;
+    const userObjectId = new Types.ObjectId(userId);
+
+    // Soft delete any existing active budgets for this user
+    const existingBudgets = await this.budgetModel.find({ userId: userObjectId, isDeleted: false }).select('_id').exec();
+    if (existingBudgets.length > 0) {
+      const budgetIds = existingBudgets.map(b => b._id);
+      await this.budgetModel.updateMany(
+        { _id: { $in: budgetIds } },
+        { $set: { isDeleted: true, deletedAt: new Date() } }
+      ).exec();
+      
+      await this.budgetItemModel.updateMany(
+        { budgetId: { $in: budgetIds }, isDeleted: false },
+        { $set: { isDeleted: true, deletedAt: new Date() } }
+      ).exec();
+    }
 
     const createdBudget = new this.budgetModel({
       ...budgetData,
-      userId: new Types.ObjectId(userId),
+      userId: userObjectId,
     });
     const savedBudget = await createdBudget.save();
 
@@ -60,9 +76,11 @@ export class BudgetsService {
 
   async update(id: string, userId: string, updateBudgetDto: UpdateBudgetDto): Promise<any> {
     const { items, ...budgetData } = updateBudgetDto;
+    const userObjectId = new Types.ObjectId(userId);
+    const budgetObjectId = new Types.ObjectId(id);
 
     const existingBudget = await this.budgetModel.findOneAndUpdate(
-      { _id: new Types.ObjectId(id), userId: new Types.ObjectId(userId), isDeleted: false },
+      { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
       { $set: budgetData },
       { new: true },
     ).exec();
@@ -72,28 +90,43 @@ export class BudgetsService {
     }
 
     if (items) {
-      // For simplicity, soft-delete existing items and insert new ones
-      // In a real scenario, you'd want to match IDs and update/insert/delete as needed.
-      await this.budgetItemModel.updateMany(
-        { budgetId: existingBudget._id, isDeleted: false },
-        { $set: { isDeleted: true, deletedAt: new Date() } }
-      ).exec();
+      for (const item of items) {
+        const categoryId = new Types.ObjectId(item.expenseCategoryId);
+        const existingItem = await this.budgetItemModel.findOne({
+          budgetId: budgetObjectId,
+          expenseCategoryId: categoryId,
+          isDeleted: false
+        }).exec();
 
-      const budgetItems = items.map(item => ({
-        ...item,
-        budgetId: existingBudget._id,
-        userId: new Types.ObjectId(userId),
-        expenseCategoryId: new Types.ObjectId(item.expenseCategoryId),
-      }));
-      await this.budgetItemModel.insertMany(budgetItems);
+        if (existingItem) {
+          // Increment the planned amount as requested
+          existingItem.plannedAmount += item.plannedAmount;
+          if (item.alertEnabled !== undefined) {
+            existingItem.alertEnabled = item.alertEnabled;
+          }
+          await existingItem.save();
+        } else {
+          // Create a new budget item if it doesn't exist for this category
+          const newItem = new this.budgetItemModel({
+            ...item,
+            budgetId: budgetObjectId,
+            userId: userObjectId,
+            expenseCategoryId: categoryId,
+          });
+          await newItem.save();
+        }
+      }
     }
 
     return this.findOne(id, userId);
   }
 
   async softDelete(id: string, userId: string): Promise<any> {
+    const userObjectId = new Types.ObjectId(userId);
+    const budgetObjectId = new Types.ObjectId(id);
+
     const deletedBudget = await this.budgetModel.findOneAndUpdate(
-      { _id: new Types.ObjectId(id), userId: new Types.ObjectId(userId), isDeleted: false },
+      { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
       { $set: { isDeleted: true, deletedAt: new Date() } },
       { new: true },
     ).exec();
@@ -104,10 +137,46 @@ export class BudgetsService {
 
     // Soft delete associated items
     await this.budgetItemModel.updateMany(
-      { budgetId: deletedBudget._id, isDeleted: false },
+      { budgetId: budgetObjectId, isDeleted: false },
       { $set: { isDeleted: true, deletedAt: new Date() } }
     ).exec();
 
     return deletedBudget;
+  }
+
+  async softDeleteBudgetItem(budgetId: string, itemId: string, userId: string): Promise<any> {
+    const deletedItem = await this.budgetItemModel.findOneAndUpdate(
+      { 
+        _id: new Types.ObjectId(itemId), 
+        budgetId: new Types.ObjectId(budgetId),
+        userId: new Types.ObjectId(userId), 
+        isDeleted: false 
+      },
+      { $set: { isDeleted: true, deletedAt: new Date() } },
+      { new: true },
+    ).exec();
+
+    if (!deletedItem) {
+      throw new NotFoundException(`Budget item #${itemId} not found`);
+    }
+    return deletedItem;
+  }
+
+  async updateBudgetItem(budgetId: string, itemId: string, userId: string, updateDto: any): Promise<any> {
+    const updatedItem = await this.budgetItemModel.findOneAndUpdate(
+      { 
+        _id: new Types.ObjectId(itemId), 
+        budgetId: new Types.ObjectId(budgetId),
+        userId: new Types.ObjectId(userId), 
+        isDeleted: false 
+      },
+      { $set: updateDto },
+      { new: true },
+    ).exec();
+
+    if (!updatedItem) {
+      throw new NotFoundException(`Budget item #${itemId} not found`);
+    }
+    return updatedItem;
   }
 }

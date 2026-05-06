@@ -33,4 +33,19 @@ export class BudgetsController {
   remove(@Request() req, @Param('id') id: string) {
     return this.budgetsService.softDelete(id, req.user.userId);
   }
+
+  @Delete(':id/items/:itemId')
+  removeItem(@Request() req, @Param('id') id: string, @Param('itemId') itemId: string) {
+    return this.budgetsService.softDeleteBudgetItem(id, itemId, req.user.userId);
+  }
+
+  @Patch(':id/items/:itemId')
+  updateItem(
+    @Request() req, 
+    @Param('id') id: string, 
+    @Param('itemId') itemId: string, 
+    @Body() updateDto: any
+  ) {
+    return this.budgetsService.updateBudgetItem(id, itemId, req.user.userId, updateDto);
+  }
 }
