@@ -2,7 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { User } from '../../users/schemas/user.schema';
 import { Budget } from './budget.schema';
-import { ExpenseCategory } from '../../categories/schemas/expense-category.schema';
+
 
 export type BudgetItemDocument = BudgetItem & Document;
 
@@ -14,8 +14,20 @@ export class BudgetItem {
   @Prop({ type: Types.ObjectId, ref: User.name, required: true })
   userId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: ExpenseCategory.name, required: true })
-  expenseCategoryId!: Types.ObjectId;
+  @Prop({ required: true })
+  name!: string;
+
+  @Prop()
+  description?: string;
+
+  @Prop({ required: true, enum: ['expense', 'income'] })
+  type!: string;
+
+  @Prop()
+  icon?: string;
+
+  @Prop()
+  color?: string;
 
   @Prop({ required: true })
   plannedAmount!: number;

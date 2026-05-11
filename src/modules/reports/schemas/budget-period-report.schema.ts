@@ -2,7 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { User } from '../../users/schemas/user.schema';
 import { Budget } from '../../budgets/schemas/budget.schema';
-import { ExpenseCategory } from '../../categories/schemas/expense-category.schema';
+import { BudgetItem } from '../../budgets/schemas/budget-item.schema';
 
 export type BudgetPeriodReportDocument = BudgetPeriodReport & Document;
 
@@ -23,8 +23,8 @@ class BudgetTotals {
 
 @Schema({ _id: false })
 class ReportItem {
-  @Prop({ type: Types.ObjectId, ref: ExpenseCategory.name, required: true })
-  expenseCategoryId!: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: BudgetItem.name, required: true })
+  budgetItemId!: Types.ObjectId;
 
   @Prop({ required: true })
   categoryName!: string;

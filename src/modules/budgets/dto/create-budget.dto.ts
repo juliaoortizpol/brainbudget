@@ -2,9 +2,23 @@ import { IsString, IsNotEmpty, IsEnum, IsDateString, IsOptional, ValidateNested,
 import { Type } from 'class-transformer';
 
 export class CreateBudgetItemDto {
+  name!: string;
+
   @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsEnum(['expense', 'income'])
   @IsNotEmpty()
-  expenseCategoryId!: string;
+  type!: string;
+
+  @IsString()
+  @IsOptional()
+  icon?: string;
+
+  @IsString()
+  @IsOptional()
+  color?: string;
 
   @IsNumber()
   @IsNotEmpty()

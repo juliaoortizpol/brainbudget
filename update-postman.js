@@ -208,11 +208,19 @@ const budgetsFolder = {
   ]
 };
 
-const hasCategories = collection.item.some(i => i.name === 'Categories');
-const hasBudgets = collection.item.some(i => i.name === 'Budgets');
+const categoriesIndex = collection.item.findIndex(i => i.name === 'Categories');
+if (categoriesIndex !== -1) {
+  collection.item[categoriesIndex] = categoriesFolder;
+} else {
+  collection.item.push(categoriesFolder);
+}
 
-if (!hasCategories) collection.item.push(categoriesFolder);
-if (!hasBudgets) collection.item.push(budgetsFolder);
+const budgetsIndex = collection.item.findIndex(i => i.name === 'Budgets');
+if (budgetsIndex !== -1) {
+  collection.item[budgetsIndex] = budgetsFolder;
+} else {
+  collection.item.push(budgetsFolder);
+}
 
 fs.writeFileSync('BrainBudget.postman_collection.json', JSON.stringify(collection, null, 2));
 console.log('Postman collection updated!');

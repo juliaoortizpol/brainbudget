@@ -43,7 +43,6 @@ export class BudgetsService {
         ...item,
         budgetId: savedBudget._id,
         userId: new Types.ObjectId(userId),
-        expenseCategoryId: new Types.ObjectId(item.expenseCategoryId),
       }));
       await this.budgetItemModel.insertMany(budgetItems);
     }
@@ -51,8 +50,21 @@ export class BudgetsService {
     return this.findOne(savedBudget._id.toString(), userId);
   }
 
-  async findAll(userId: string): Promise<BudgetDocument[]> {
-    return this.budgetModel.find({ userId: new Types.ObjectId(userId), isDeleted: false }).exec();
+  async findAll(userId: string): Promise<any[]> {
+    const budgets = await this.budgetModel.find({ userId: new Types.ObjectId(userId), isDeleted: false }).exec();
+    
+    if (budgets.length === 0) return [];
+
+    const budgetIds = budgets.map(b => b._id);
+    const allItems = await this.budgetItemModel.find({ budgetId: { $in: budgetIds }, isDeleted: false }).exec();
+
+    return budgets.map(budget => {
+      const items = allItems.filter(item => item.budgetId.equals(budget._id));
+      return {
+        ...budget.toObject(),
+        items,
+      };
+    });
   }
 
   async findOne(id: string, userId: string): Promise<any> {
@@ -89,32 +101,15 @@ export class BudgetsService {
       throw new NotFoundException(`Budget #${id} not found`);
     }
 
-    if (items) {
+    if (items && items.length > 0) {
       for (const item of items) {
-        const categoryId = new Types.ObjectId(item.expenseCategoryId);
-        const existingItem = await this.budgetItemModel.findOne({
+        // Create new budget items
+        const newItem = new this.budgetItemModel({
+          ...item,
           budgetId: budgetObjectId,
-          expenseCategoryId: categoryId,
-          isDeleted: false
-        }).exec();
-
-        if (existingItem) {
-          // Increment the planned amount as requested
-          existingItem.plannedAmount += item.plannedAmount;
-          if (item.alertEnabled !== undefined) {
-            existingItem.alertEnabled = item.alertEnabled;
-          }
-          await existingItem.save();
-        } else {
-          // Create a new budget item if it doesn't exist for this category
-          const newItem = new this.budgetItemModel({
-            ...item,
-            budgetId: budgetObjectId,
-            userId: userObjectId,
-            expenseCategoryId: categoryId,
-          });
-          await newItem.save();
-        }
+          userId: userObjectId,
+        });
+        await newItem.save();
       }
     }
 
@@ -160,6 +155,23 @@ export class BudgetsService {
       throw new NotFoundException(`Budget item #${itemId} not found`);
     }
     return deletedItem;
+  }
+
+  async addItem(budgetId: string, userId: string, createItemDto: any): Promise<any> {
+    const userObjectId = new Types.ObjectId(userId);
+    const budgetObjectId = new Types.ObjectId(budgetId);
+
+    const budget = await this.budgetModel.findOne({ _id: budgetObjectId, userId: userObjectId, isDeleted: false }).exec();
+    if (!budget) {
+      throw new NotFoundException(`Budget #${budgetId} not found`);
+    }
+
+    const newItem = new this.budgetItemModel({
+      ...createItemDto,
+      budgetId: budgetObjectId,
+      userId: userObjectId,
+    });
+    return await newItem.save();
   }
 
   async updateBudgetItem(budgetId: string, itemId: string, userId: string, updateDto: any): Promise<any> {

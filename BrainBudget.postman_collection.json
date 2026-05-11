@@ -388,6 +388,62 @@
               ]
             }
           }
+        },
+        {
+          "name": "Delete Budget Item",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/budgets/YOUR_BUDGET_ID/items/YOUR_ITEM_ID",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "budgets",
+                "YOUR_BUDGET_ID",
+                "items",
+                "YOUR_ITEM_ID"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Budget Item",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"plannedAmount\": 250,\n    \"alertEnabled\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/budgets/YOUR_BUDGET_ID/items/YOUR_ITEM_ID",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "budgets",
+                "YOUR_BUDGET_ID",
+                "items",
+                "YOUR_ITEM_ID"
+              ]
+            }
+          }
         }
       ]
     }

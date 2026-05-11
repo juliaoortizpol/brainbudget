@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
 import { BudgetsService } from './budgets.service';
-import { CreateBudgetDto } from './dto/create-budget.dto';
+import { CreateBudgetDto, CreateBudgetItemDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 
@@ -32,6 +32,11 @@ export class BudgetsController {
   @Delete(':id')
   remove(@Request() req, @Param('id') id: string) {
     return this.budgetsService.softDelete(id, req.user.userId);
+  }
+
+  @Post(':id/items')
+  addItem(@Request() req, @Param('id') id: string, @Body() createItemDto: CreateBudgetItemDto) {
+    return this.budgetsService.addItem(id, req.user.userId, createItemDto);
   }
 
   @Delete(':id/items/:itemId')

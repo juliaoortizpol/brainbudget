@@ -2,7 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { User } from '../../users/schemas/user.schema';
 import { Account } from '../../accounts/schemas/account.schema';
-import { ExpenseCategory } from '../../categories/schemas/expense-category.schema';
+import { BudgetItem } from '../../budgets/schemas/budget-item.schema';
 
 export type TransactionDocument = Transaction & Document;
 
@@ -14,8 +14,8 @@ export class Transaction {
   @Prop({ type: Types.ObjectId, ref: Account.name, required: true })
   accountId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: ExpenseCategory.name })
-  expenseCategoryId?: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: BudgetItem.name })
+  budgetItemId?: Types.ObjectId;
 
   @Prop({ required: true })
   name!: string;
