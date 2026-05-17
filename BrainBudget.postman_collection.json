@@ -281,7 +281,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"name\": \"May 2026 Budget\",\n    \"periodType\": \"monthly\",\n    \"startDate\": \"2026-05-01T00:00:00Z\",\n    \"endDate\": \"2026-05-31T23:59:59Z\",\n    \"status\": \"active\",\n    \"items\": [\n        {\n            \"expenseCategoryId\": \"YOUR_CATEGORY_ID\",\n            \"plannedAmount\": 500\n        }\n    ]\n}"
+              "raw": "{\n    \"name\": \"May 2026 Budget\",\n    \"periodType\": \"monthly\",\n    \"startDate\": \"2026-05-01T00:00:00Z\",\n    \"endDate\": \"2026-05-31T23:59:59Z\",\n    \"status\": \"active\",\n    \"items\": [\n        {\n            \"name\": \"Groceries\",\n            \"type\": \"expense\",\n            \"plannedAmount\": 500\n        }\n    ]\n}"
             },
             "url": {
               "raw": "{{base_url}}/budgets",
@@ -385,6 +385,37 @@
               "path": [
                 "budgets",
                 "YOUR_BUDGET_ID"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Add Budget Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"name\": \"Rent\",\n    \"description\": \"Monthly apartment rent\",\n    \"type\": \"expense\",\n    \"icon\": \"home\",\n    \"color\": \"#4f46e5\",\n    \"plannedAmount\": 1200\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/budgets/YOUR_BUDGET_ID/items",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "budgets",
+                "YOUR_BUDGET_ID",
+                "items"
               ]
             }
           }

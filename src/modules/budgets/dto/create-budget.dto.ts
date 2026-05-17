@@ -2,6 +2,8 @@ import { IsString, IsNotEmpty, IsEnum, IsDateString, IsOptional, ValidateNested,
 import { Type } from 'class-transformer';
 
 export class CreateBudgetItemDto {
+  @IsString()
+  @IsNotEmpty()
   name!: string;
 
   @IsString()
