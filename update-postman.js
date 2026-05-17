@@ -242,5 +242,103 @@ if (budgetsIndex !== -1) {
   collection.item.push(budgetsFolder);
 }
 
+const transactionsFolder = {
+  "name": "Transactions",
+  "item": [
+    {
+      "name": "Create Transaction",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"accountId\": \"YOUR_ACCOUNT_ID\",\n    \"budgetItemId\": \"YOUR_BUDGET_ITEM_ID\",\n    \"name\": \"Grocery Shopping\",\n    \"amount\": 150.50,\n    \"type\": \"expense\",\n    \"date\": \"2026-05-17T10:00:00Z\",\n    \"notes\": \"Bought groceries at the local supermarket\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/transactions",
+          "host": ["{{base_url}}"],
+          "path": ["transactions"]
+        }
+      }
+    },
+    {
+      "name": "Get Transactions",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/transactions?page=1&limit=10",
+          "host": ["{{base_url}}"],
+          "path": ["transactions"],
+          "query": [
+            { "key": "page", "value": "1" },
+            { "key": "limit", "value": "10" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Transaction by ID",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/transactions/YOUR_TRANSACTION_ID",
+          "host": ["{{base_url}}"],
+          "path": ["transactions", "YOUR_TRANSACTION_ID"]
+        }
+      }
+    },
+    {
+      "name": "Update Transaction",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"amount\": 160.00,\n    \"notes\": \"Updated price\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/transactions/YOUR_TRANSACTION_ID",
+          "host": ["{{base_url}}"],
+          "path": ["transactions", "YOUR_TRANSACTION_ID"]
+        }
+      }
+    },
+    {
+      "name": "Delete Transaction",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{jwt_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/transactions/YOUR_TRANSACTION_ID",
+          "host": ["{{base_url}}"],
+          "path": ["transactions", "YOUR_TRANSACTION_ID"]
+        }
+      }
+    }
+  ]
+};
+
+const transactionsIndex = collection.item.findIndex(i => i.name === 'Transactions');
+if (transactionsIndex !== -1) {
+  collection.item[transactionsIndex] = transactionsFolder;
+} else {
+  collection.item.push(transactionsFolder);
+}
+
+
 fs.writeFileSync('BrainBudget.postman_collection.json', JSON.stringify(collection, null, 2));
 console.log('Postman collection updated!');
