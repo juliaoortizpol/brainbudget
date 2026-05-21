@@ -2,8 +2,8 @@ import { IsNotEmpty, IsString, IsNumber, IsMongoId, IsOptional, IsEnum, IsDateSt
 
 export class CreateTransactionDto {
   @IsMongoId()
-  @IsNotEmpty()
-  accountId!: string;
+  @IsOptional()
+  accountId?: string;
 
   @IsMongoId()
   @IsOptional()

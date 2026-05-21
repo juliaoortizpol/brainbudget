@@ -497,7 +497,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"accountId\": \"YOUR_ACCOUNT_ID\",\n    \"budgetItemId\": \"YOUR_BUDGET_ITEM_ID\",\n    \"name\": \"Grocery Shopping\",\n    \"amount\": 150.50,\n    \"type\": \"expense\",\n    \"date\": \"2026-05-17T10:00:00Z\",\n    \"notes\": \"Bought groceries at the local supermarket\"\n}"
+              "raw": "{\n    \"budgetItemId\": \"YOUR_BUDGET_ITEM_ID\",\n    \"name\": \"Grocery Shopping\",\n    \"amount\": 150.50,\n    \"type\": \"expense\",\n    \"date\": \"2026-05-17T10:00:00Z\",\n    \"notes\": \"Bought groceries at the local supermarket\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/transactions",
