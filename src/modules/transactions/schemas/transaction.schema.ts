@@ -11,8 +11,8 @@ export class Transaction {
   @Prop({ type: Types.ObjectId, ref: User.name, required: true })
   userId!: Types.ObjectId;
 
-  @Prop({ type: Types.ObjectId, ref: Account.name, required: true })
-  accountId!: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: Account.name })
+  accountId?: Types.ObjectId;
 
   @Prop({ type: Types.ObjectId, ref: BudgetItem.name })
   budgetItemId?: Types.ObjectId;
