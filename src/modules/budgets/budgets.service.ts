@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Budget, BudgetDocument } from './schemas/budget.schema';
 import { BudgetItem, BudgetItemDocument } from './schemas/budget-item.schema';
+import { Transaction, TransactionDocument } from '../transactions/schemas/transaction.schema';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 
@@ -11,6 +12,7 @@ export class BudgetsService {
   constructor(
     @InjectModel(Budget.name) private budgetModel: Model<BudgetDocument>,
     @InjectModel(BudgetItem.name) private budgetItemModel: Model<BudgetItemDocument>,
+    @InjectModel(Transaction.name) private transactionModel: Model<TransactionDocument>,
   ) {}
 
   async create(userId: string, createBudgetDto: CreateBudgetDto): Promise<any> {
@@ -58,13 +60,28 @@ export class BudgetsService {
     const budgetIds = budgets.map(b => b._id);
     const allItems = await this.budgetItemModel.find({ budgetId: { $in: budgetIds }, isDeleted: false }).exec();
 
-    return budgets.map(budget => {
-      const items = allItems.filter(item => item.budgetId.equals(budget._id));
-      return {
-        ...budget.toObject(),
-        items,
-      };
-    });
+    const itemsByBudget = new Map<string, any[]>();
+    for (const item of allItems) {
+      const bId = item.budgetId.toString();
+      if (!itemsByBudget.has(bId)) {
+        itemsByBudget.set(bId, []);
+      }
+      itemsByBudget.get(bId)!.push(item);
+    }
+
+    const budgetsWithSpent = await Promise.all(
+      budgets.map(async (budget) => {
+        const budgetItems = itemsByBudget.get(budget._id.toString()) || [];
+        const items = await this.appendSpentToItems(budget, budgetItems);
+
+        return {
+          ...budget.toObject(),
+          items,
+        };
+      })
+    );
+
+    return budgetsWithSpent;
   }
 
   async findOne(id: string, userId: string): Promise<any> {
@@ -78,7 +95,9 @@ export class BudgetsService {
       throw new NotFoundException(`Budget #${id} not found`);
     }
 
-    const items = await this.budgetItemModel.find({ budgetId: budget._id, isDeleted: false }).exec();
+    const budgetItems = await this.budgetItemModel.find({ budgetId: budget._id, isDeleted: false }).exec();
+
+    const items = await this.appendSpentToItems(budget, budgetItems);
 
     return {
       ...budget.toObject(),
@@ -190,5 +209,40 @@ export class BudgetsService {
       throw new NotFoundException(`Budget item #${itemId} not found`);
     }
     return updatedItem;
+  }
+  private async appendSpentToItems(budget: any, budgetItems: any[]): Promise<any[]> {
+    if (!budgetItems.length) return [];
+
+    const now = new Date();
+    const endDateLimit = budget.endDate < now ? budget.endDate : now;
+
+    const transactions = await this.transactionModel.aggregate([
+      {
+        $match: {
+          userId: budget.userId,
+          budgetItemId: { $in: budgetItems.map(item => item._id) },
+          date: {
+            $gte: budget.startDate,
+            $lte: endDateLimit,
+          },
+        },
+      },
+      {
+        $group: {
+          _id: '$budgetItemId',
+          totalSpent: { $sum: '$amount' },
+        },
+      },
+    ]);
+
+    const spentMap = new Map<string, number>();
+    for (const t of transactions) {
+      spentMap.set(t._id.toString(), t.totalSpent);
+    }
+
+    return budgetItems.map(item => ({
+      ...item.toObject(),
+      spent: spentMap.get(item._id.toString()) || 0,
+    }));
   }
 }
