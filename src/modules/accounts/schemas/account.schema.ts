@@ -12,17 +12,29 @@ export class Account {
   @Prop({ required: true })
   name!: string;
 
+  @Prop({ required: true })
+  institution!: string;
+
+  @Prop({ enum: ['checking', 'savings', 'credit_card', 'investment', 'loan', 'brokerage', 'retirement', 'other'], default: 'checking' })
+  type?: string;
+
+  @Prop({ default: 0 })
+  maxBalance?: number;
+
+  @Prop({ maxlength: 4 })
+  last4Digits?: string;
+
+  @Prop({ enum: ['active', 'pending', 're_auth_required'], default: 'active' })
+  status?: string;
+
+  @Prop()
+  lastSynced?: Date;
+
   @Prop()
   email?: string;
 
-  @Prop()
-  bank?: string;
-
-  @Prop({ enum: ['bank', 'cash', 'wallet', 'credit_card', 'other'] })
-  type?: string;
-
-  @Prop()
-  currency?: string;
+  @Prop({ default: false })
+  isDeleted?: boolean;
 }
 
 export const AccountSchema = SchemaFactory.createForClass(Account);
