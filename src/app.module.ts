@@ -9,6 +9,7 @@ import { BudgetsModule } from './modules/budgets/budgets.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { IntegrationsModule } from './modules/integrations/integrations.module';
+import { EmailParserModule } from './modules/email-parser/email-parser.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { IntegrationsModule } from './modules/integrations/integrations.module';
     TransactionsModule,
     AccountsModule,
     IntegrationsModule,
+    EmailParserModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -1,15 +1,19 @@
-import { Controller, Get, Post, Query, UseGuards, Request, Res, Redirect } from '@nestjs/common';
+import { Controller, Get, Post, Query, UseGuards, Req, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { IntegrationsService } from './integrations.service';
+import { SyncEngineService } from './sync-engine.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @Controller('integrations')
 export class IntegrationsController {
-  constructor(private readonly integrationsService: IntegrationsService) {}
+  constructor(
+    private readonly integrationsService: IntegrationsService,
+    private readonly syncEngineService: SyncEngineService
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Get('gmail/auth')
-  getAuthUrl(@Request() req: any) {
+  getAuthUrl(@Req() req: any) {
     const url = this.integrationsService.getGmailAuthUrl(req.user.userId);
     return { url };
   }
@@ -33,7 +37,7 @@ export class IntegrationsController {
 
   @UseGuards(JwtAuthGuard)
   @Get('gmail/status')
-  async getStatus(@Request() req: any) {
+  async getStatus(@Req() req: any) {
     const connection = await this.integrationsService.getGmailConnection(req.user.userId);
     if (!connection) {
       return { connected: false };
@@ -48,7 +52,20 @@ export class IntegrationsController {
 
   @UseGuards(JwtAuthGuard)
   @Post('gmail/disconnect')
-  async disconnect(@Request() req: any) {
+  async disconnect(@Req() req: any) {
     return this.integrationsService.disconnectGmail(req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('gmail/test-fetch')
+  async testFetchMails(@Req() req: any, @Query('query') query?: string) {
+    // Allows the user to pass a query like ?query=from:alerts@chase.com
+    return this.integrationsService.fetchRecentMails(req.user.userId, query);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('gmail/sync')
+  async syncGmails(@Req() req: any) {
+    return await this.syncEngineService.syncEmailsForUser(req.user.userId);
   }
 }

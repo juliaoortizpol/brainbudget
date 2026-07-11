@@ -10,6 +10,6 @@ import { Transaction, TransactionSchema } from './schemas/transaction.schema';
   ],
   controllers: [TransactionsController],
   providers: [TransactionsService],
-  exports: [TransactionsService],
+  exports: [TransactionsService, MongooseModule],
 })
 export class TransactionsModule {}

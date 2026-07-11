@@ -85,4 +85,58 @@ export class IntegrationsService {
     ).exec();
     return connection;
   }
+
+  async fetchRecentMails(userId: string, query: string = 'newer_than:5d') {
+    const connection = await this.getGmailConnection(userId);
+    
+    if (!connection || connection.status !== 'active' || !connection.refreshToken) {
+      throw new InternalServerErrorException('Gmail is not connected or missing refresh token');
+    }
+
+    try {
+      this.oauth2Client.setCredentials({ refresh_token: connection.refreshToken });
+      const gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
+
+      // List messages matching the query
+      const listResponse = await gmail.users.messages.list({
+        userId: 'me',
+        q: query,
+        maxResults: 10, // Limit to 10 for testing
+      });
+
+      const messages = listResponse.data.messages || [];
+      if (messages.length === 0) {
+        return [];
+      }
+
+      // Fetch the full content of each message
+      const mailDetails = await Promise.all(
+        messages.map(async (msg) => {
+          const msgResponse = await gmail.users.messages.get({
+            userId: 'me',
+            id: msg.id!,
+            format: 'metadata',
+            metadataHeaders: ['From', 'Subject', 'Date'],
+          });
+
+          const headers = msgResponse.data.payload?.headers || [];
+          const subject = headers.find(h => h.name === 'Subject')?.value || 'No Subject';
+          const from = headers.find(h => h.name === 'From')?.value || 'Unknown Sender';
+          const date = headers.find(h => h.name === 'Date')?.value || '';
+
+          return {
+            id: msg.id,
+            snippet: msgResponse.data.snippet,
+            subject,
+            from,
+            date,
+          };
+        })
+      );
+
+      return mailDetails;
+    } catch (error: any) {
+      throw new InternalServerErrorException(`Failed to fetch emails: ${error.message}`);
+    }
+  }
 }
