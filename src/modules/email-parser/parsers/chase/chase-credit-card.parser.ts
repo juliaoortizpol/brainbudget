@@ -10,14 +10,16 @@ export const chaseCreditCardParser: ParserDefinition = {
     try {
       // Very basic mock parsing logic for demonstration
       const amountMatch = body.match(/\$([0-9,.]+)/);
-      const amount = amountMatch ? parseFloat(amountMatch[1].replace(',', '')) : 0;
-      
+      if (!amountMatch) return null;
+      const amount = parseFloat(amountMatch[1].replace(/,/g, ''));
+      if (!Number.isFinite(amount) || amount <= 0) return null;
+
       return {
         amount,
         date: new Date(),
         description: 'Chase Credit Card Transaction',
         type: 'expense',
-        accountType: 'credit',
+        accountType: 'credit_card',
       };
     } catch (error) {
       logger.error('Failed to parse with chase_credit_card_v1', error);

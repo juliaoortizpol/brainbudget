@@ -16,7 +16,7 @@ export const banreservasCreditCardParser: ParserDefinition = {
 
       $('td').each((i, el) => {
         const text = $(el).text().trim();
-        
+
         if (text === 'Monto:') {
           const amountText = $(el).parent().next('tr').find('td').text().trim();
           const match = amountText.match(/([0-9,.]+)/);
@@ -31,25 +31,37 @@ export const banreservasCreditCardParser: ParserDefinition = {
 
         if (text === 'Fecha de transacción:') {
           const dateText = $(el).parent().next('tr').find('td').text().trim();
-          const match = dateText.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})\s+(AM|PM)/i);
+          const match = dateText.match(
+            /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})\s+(AM|PM)/i,
+          );
           if (match) {
             let [_, day, month, year, hours, minutes, ampm] = match;
             let h = parseInt(hours, 10);
             if (ampm.toUpperCase() === 'PM' && h < 12) h += 12;
             if (ampm.toUpperCase() === 'AM' && h === 12) h = 0;
-            date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), h, parseInt(minutes));
+            date = new Date(
+              parseInt(year),
+              parseInt(month) - 1,
+              parseInt(day),
+              h,
+              parseInt(minutes),
+            );
           }
         }
       });
 
-      const type = subject.toLowerCase().includes('consumo') ? 'expense' : 'expense';
+      if (!Number.isFinite(amount) || amount <= 0) return null;
+
+      const type = subject.toLowerCase().includes('consumo')
+        ? 'expense'
+        : 'expense';
 
       return {
         amount,
         date,
         description,
         type,
-        accountType: 'credit',
+        accountType: 'credit_card',
       };
     } catch (error) {
       logger.error('Failed to parse with banreservas_tc_v1', error);

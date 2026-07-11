@@ -35,8 +35,12 @@ export class Transaction {
   @Prop()
   notes?: string;
 
-  @Prop({ unique: true, sparse: true })
+  @Prop()
   externalId?: string;
 }
 
 export const TransactionSchema = SchemaFactory.createForClass(Transaction);
+TransactionSchema.index(
+  { userId: 1, externalId: 1 },
+  { unique: true, sparse: true },
+);
