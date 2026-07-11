@@ -1,14 +1,22 @@
-import { Controller, Get, Post, Query, UseGuards, Req, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Query,
+  UseGuards,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { IntegrationsService } from './integrations.service';
 import { SyncEngineService } from './sync-engine.service';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 
 @Controller('integrations')
 export class IntegrationsController {
   constructor(
     private readonly integrationsService: IntegrationsService,
-    private readonly syncEngineService: SyncEngineService
+    private readonly syncEngineService: SyncEngineService,
   ) {}
 
   @UseGuards(JwtAuthGuard)
@@ -20,25 +28,37 @@ export class IntegrationsController {
 
   // Google hits this endpoint after the user consents
   @Get('gmail/callback')
-  async handleCallback(@Query('code') code: string, @Query('state') state: string, @Res() res: Response) {
+  async handleCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Res() res: Response,
+  ) {
     // state contains the userId we passed in getAuthUrl
     if (!code || !state) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?error=missing_params`);
+      return res.redirect(
+        `${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?error=missing_params`,
+      );
     }
 
     try {
       await this.integrationsService.handleGmailCallback(code, state);
       // Redirect back to frontend settings page on success
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?gmail_connected=true`);
+      return res.redirect(
+        `${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?gmail_connected=true`,
+      );
     } catch (error) {
-      return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?error=gmail_connection_failed`);
+      return res.redirect(
+        `${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?error=gmail_connection_failed`,
+      );
     }
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('gmail/status')
   async getStatus(@Req() req: any) {
-    const connection = await this.integrationsService.getGmailConnection(req.user.userId);
+    const connection = await this.integrationsService.getGmailConnection(
+      req.user.userId,
+    );
     if (!connection) {
       return { connected: false };
     }

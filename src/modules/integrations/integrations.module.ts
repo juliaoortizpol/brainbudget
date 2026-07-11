@@ -3,14 +3,19 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { IntegrationsController } from './integrations.controller';
 import { IntegrationsService } from './integrations.service';
 import { SyncEngineService } from './sync-engine.service';
-import { GmailConnection, GmailConnectionSchema } from './schemas/gmail-connection.schema';
-import { EmailParserModule } from '../email-parser/email-parser.module';
-import { TransactionsModule } from '../transactions/transactions.module';
-import { AccountsModule } from '../accounts/accounts.module';
+import {
+  GmailConnection,
+  GmailConnectionSchema,
+} from './schemas/gmail-connection.schema';
+import { EmailParserModule } from '@/modules/email-parser/email-parser.module';
+import { TransactionsModule } from '@/modules/transactions/transactions.module';
+import { AccountsModule } from '@/modules/accounts/accounts.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: GmailConnection.name, schema: GmailConnectionSchema }]),
+    MongooseModule.forFeature([
+      { name: GmailConnection.name, schema: GmailConnectionSchema },
+    ]),
     EmailParserModule,
     TransactionsModule,
     AccountsModule,

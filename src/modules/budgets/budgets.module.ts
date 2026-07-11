@@ -4,7 +4,10 @@ import { BudgetsService } from './budgets.service';
 import { BudgetsController } from './budgets.controller';
 import { Budget, BudgetSchema } from './schemas/budget.schema';
 import { BudgetItem, BudgetItemSchema } from './schemas/budget-item.schema';
-import { Transaction, TransactionSchema } from '../transactions/schemas/transaction.schema';
+import {
+  Transaction,
+  TransactionSchema,
+} from '@/modules/transactions/schemas/transaction.schema';
 
 @Module({
   imports: [
@@ -12,7 +15,7 @@ import { Transaction, TransactionSchema } from '../transactions/schemas/transact
       { name: Budget.name, schema: BudgetSchema },
       { name: BudgetItem.name, schema: BudgetItemSchema },
       { name: Transaction.name, schema: TransactionSchema },
-    ])
+    ]),
   ],
   controllers: [BudgetsController],
   providers: [BudgetsService],

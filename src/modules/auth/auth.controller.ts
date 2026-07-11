@@ -1,12 +1,20 @@
-import { Controller, Post, Body, UseGuards, Get, Request, Res } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  UseGuards,
+  Get,
+  Request,
+  Res,
+} from '@nestjs/common';
 import { Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/auth.dto';
-import { LocalAuthGuard } from '../../common/guards/local-auth.guard';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { LocalAuthGuard } from '@/common/guards/local-auth.guard';
+import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
 
-import { GoogleOauthGuard } from '../../common/guards/google-oauth.guard';
+import { GoogleOauthGuard } from '@/common/guards/google-oauth.guard';
 
 @Controller('auth')
 export class AuthController {

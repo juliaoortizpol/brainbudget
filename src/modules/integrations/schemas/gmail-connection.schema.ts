@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-import { User } from '../../users/schemas/user.schema';
+import { User } from '@/modules/users/schemas/user.schema';
 
 export type GmailConnectionDocument = GmailConnection & Document;
 
@@ -25,4 +25,5 @@ export class GmailConnection {
   status!: string;
 }
 
-export const GmailConnectionSchema = SchemaFactory.createForClass(GmailConnection);
+export const GmailConnectionSchema =
+  SchemaFactory.createForClass(GmailConnection);

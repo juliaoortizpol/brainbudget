@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { UsersService } from '../users/users.service';
+import { UsersService } from '@/modules/users/users.service';
 import { RegisterDto } from './dto/auth.dto';
 import * as bcrypt from 'bcrypt';
 
@@ -15,7 +15,11 @@ export class AuthService {
 
   async validateLocalUser(email: string, pass: string): Promise<any> {
     const user = await this.usersService.findByEmail(email);
-    if (user && user.passwordHash && (await bcrypt.compare(pass, user.passwordHash))) {
+    if (
+      user &&
+      user.passwordHash &&
+      (await bcrypt.compare(pass, user.passwordHash))
+    ) {
       const { passwordHash, ...result } = user.toObject();
       return result;
     }

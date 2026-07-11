@@ -6,7 +6,7 @@ import {
   InstitutionConfigDocument,
 } from '../schemas/institution-config.schema';
 import { ParserRegistryService } from './parser-registry.service';
-import { extractEmailAddress } from '../../integrations/gmail-message.utils';
+import { extractEmailAddress } from '@/modules/integrations/gmail-message.utils';
 
 @Injectable()
 export class EmailParserService {

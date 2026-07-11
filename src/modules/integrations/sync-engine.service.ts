@@ -3,12 +3,15 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { google } from 'googleapis';
 import { IntegrationsService } from './integrations.service';
-import { EmailParserService } from '../email-parser/services/email-parser.service';
+import { EmailParserService } from '@/modules/email-parser/services/email-parser.service';
 import {
   Transaction,
   TransactionDocument,
-} from '../transactions/schemas/transaction.schema';
-import { Account, AccountDocument } from '../accounts/schemas/account.schema';
+} from '@/modules/transactions/schemas/transaction.schema';
+import {
+  Account,
+  AccountDocument,
+} from '@/modules/accounts/schemas/account.schema';
 import { extractMessageBody } from './gmail-message.utils';
 
 @Injectable()

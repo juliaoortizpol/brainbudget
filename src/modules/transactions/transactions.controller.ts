@@ -1,9 +1,20 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Request,
+  Query,
+} from '@nestjs/common';
 import { TransactionsService } from './transactions.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { GetTransactionsFilterDto } from './dto/get-transactions-filter.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
 @Controller('transactions')
@@ -12,7 +23,10 @@ export class TransactionsController {
 
   @Post()
   create(@Request() req, @Body() createTransactionDto: CreateTransactionDto) {
-    return this.transactionsService.create(req.user.userId, createTransactionDto);
+    return this.transactionsService.create(
+      req.user.userId,
+      createTransactionDto,
+    );
   }
 
   @Get()
@@ -26,8 +40,16 @@ export class TransactionsController {
   }
 
   @Patch(':id')
-  update(@Request() req, @Param('id') id: string, @Body() updateTransactionDto: UpdateTransactionDto) {
-    return this.transactionsService.update(id, req.user.userId, updateTransactionDto);
+  update(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() updateTransactionDto: UpdateTransactionDto,
+  ) {
+    return this.transactionsService.update(
+      id,
+      req.user.userId,
+      updateTransactionDto,
+    );
   }
 
   @Delete(':id')

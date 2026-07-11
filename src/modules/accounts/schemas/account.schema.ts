@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-import { User } from '../../users/schemas/user.schema';
+import { User } from '@/modules/users/schemas/user.schema';
 
 export type AccountDocument = Account & Document;
 
@@ -15,7 +15,19 @@ export class Account {
   @Prop({ required: true })
   institution!: string;
 
-  @Prop({ enum: ['checking', 'savings', 'credit_card', 'investment', 'loan', 'brokerage', 'retirement', 'other'], default: 'checking' })
+  @Prop({
+    enum: [
+      'checking',
+      'savings',
+      'credit_card',
+      'investment',
+      'loan',
+      'brokerage',
+      'retirement',
+      'other',
+    ],
+    default: 'checking',
+  })
   type?: string;
 
   @Prop({ default: 0 })

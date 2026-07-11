@@ -3,7 +3,10 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Budget, BudgetDocument } from './schemas/budget.schema';
 import { BudgetItem, BudgetItemDocument } from './schemas/budget-item.schema';
-import { Transaction, TransactionDocument } from '../transactions/schemas/transaction.schema';
+import {
+  Transaction,
+  TransactionDocument,
+} from '@/modules/transactions/schemas/transaction.schema';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 
@@ -11,8 +14,10 @@ import { UpdateBudgetDto } from './dto/update-budget.dto';
 export class BudgetsService {
   constructor(
     @InjectModel(Budget.name) private budgetModel: Model<BudgetDocument>,
-    @InjectModel(BudgetItem.name) private budgetItemModel: Model<BudgetItemDocument>,
-    @InjectModel(Transaction.name) private transactionModel: Model<TransactionDocument>,
+    @InjectModel(BudgetItem.name)
+    private budgetItemModel: Model<BudgetItemDocument>,
+    @InjectModel(Transaction.name)
+    private transactionModel: Model<TransactionDocument>,
   ) {}
 
   async create(userId: string, createBudgetDto: CreateBudgetDto): Promise<any> {
@@ -20,18 +25,25 @@ export class BudgetsService {
     const userObjectId = new Types.ObjectId(userId);
 
     // Soft delete any existing active budgets for this user
-    const existingBudgets = await this.budgetModel.find({ userId: userObjectId, isDeleted: false }).select('_id').exec();
+    const existingBudgets = await this.budgetModel
+      .find({ userId: userObjectId, isDeleted: false })
+      .select('_id')
+      .exec();
     if (existingBudgets.length > 0) {
-      const budgetIds = existingBudgets.map(b => b._id);
-      await this.budgetModel.updateMany(
-        { _id: { $in: budgetIds } },
-        { $set: { isDeleted: true, deletedAt: new Date() } }
-      ).exec();
-      
-      await this.budgetItemModel.updateMany(
-        { budgetId: { $in: budgetIds }, isDeleted: false },
-        { $set: { isDeleted: true, deletedAt: new Date() } }
-      ).exec();
+      const budgetIds = existingBudgets.map((b) => b._id);
+      await this.budgetModel
+        .updateMany(
+          { _id: { $in: budgetIds } },
+          { $set: { isDeleted: true, deletedAt: new Date() } },
+        )
+        .exec();
+
+      await this.budgetItemModel
+        .updateMany(
+          { budgetId: { $in: budgetIds }, isDeleted: false },
+          { $set: { isDeleted: true, deletedAt: new Date() } },
+        )
+        .exec();
     }
 
     const createdBudget = new this.budgetModel({
@@ -41,7 +53,7 @@ export class BudgetsService {
     const savedBudget = await createdBudget.save();
 
     if (items && items.length > 0) {
-      const budgetItems = items.map(item => ({
+      const budgetItems = items.map((item) => ({
         ...item,
         budgetId: savedBudget._id,
         userId: new Types.ObjectId(userId),
@@ -53,12 +65,16 @@ export class BudgetsService {
   }
 
   async findAll(userId: string): Promise<any[]> {
-    const budgets = await this.budgetModel.find({ userId: new Types.ObjectId(userId), isDeleted: false }).exec();
-    
+    const budgets = await this.budgetModel
+      .find({ userId: new Types.ObjectId(userId), isDeleted: false })
+      .exec();
+
     if (budgets.length === 0) return [];
 
-    const budgetIds = budgets.map(b => b._id);
-    const allItems = await this.budgetItemModel.find({ budgetId: { $in: budgetIds }, isDeleted: false }).exec();
+    const budgetIds = budgets.map((b) => b._id);
+    const allItems = await this.budgetItemModel
+      .find({ budgetId: { $in: budgetIds }, isDeleted: false })
+      .exec();
 
     const itemsByBudget = new Map<string, any[]>();
     for (const item of allItems) {
@@ -78,24 +94,28 @@ export class BudgetsService {
           ...budget.toObject(),
           items,
         };
-      })
+      }),
     );
 
     return budgetsWithSpent;
   }
 
   async findOne(id: string, userId: string): Promise<any> {
-    const budget = await this.budgetModel.findOne({
-      _id: new Types.ObjectId(id),
-      userId: new Types.ObjectId(userId),
-      isDeleted: false,
-    }).exec();
+    const budget = await this.budgetModel
+      .findOne({
+        _id: new Types.ObjectId(id),
+        userId: new Types.ObjectId(userId),
+        isDeleted: false,
+      })
+      .exec();
 
     if (!budget) {
       throw new NotFoundException(`Budget #${id} not found`);
     }
 
-    const budgetItems = await this.budgetItemModel.find({ budgetId: budget._id, isDeleted: false }).exec();
+    const budgetItems = await this.budgetItemModel
+      .find({ budgetId: budget._id, isDeleted: false })
+      .exec();
 
     const items = await this.appendSpentToItems(budget, budgetItems);
 
@@ -105,16 +125,22 @@ export class BudgetsService {
     };
   }
 
-  async update(id: string, userId: string, updateBudgetDto: UpdateBudgetDto): Promise<any> {
+  async update(
+    id: string,
+    userId: string,
+    updateBudgetDto: UpdateBudgetDto,
+  ): Promise<any> {
     const { items, ...budgetData } = updateBudgetDto;
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(id);
 
-    const existingBudget = await this.budgetModel.findOneAndUpdate(
-      { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
-      { $set: budgetData },
-      { new: true },
-    ).exec();
+    const existingBudget = await this.budgetModel
+      .findOneAndUpdate(
+        { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
+        { $set: budgetData },
+        { new: true },
+      )
+      .exec();
 
     if (!existingBudget) {
       throw new NotFoundException(`Budget #${id} not found`);
@@ -139,36 +165,46 @@ export class BudgetsService {
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(id);
 
-    const deletedBudget = await this.budgetModel.findOneAndUpdate(
-      { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
-      { $set: { isDeleted: true, deletedAt: new Date() } },
-      { new: true },
-    ).exec();
+    const deletedBudget = await this.budgetModel
+      .findOneAndUpdate(
+        { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
+        { $set: { isDeleted: true, deletedAt: new Date() } },
+        { new: true },
+      )
+      .exec();
 
     if (!deletedBudget) {
       throw new NotFoundException(`Budget #${id} not found`);
     }
 
     // Soft delete associated items
-    await this.budgetItemModel.updateMany(
-      { budgetId: budgetObjectId, isDeleted: false },
-      { $set: { isDeleted: true, deletedAt: new Date() } }
-    ).exec();
+    await this.budgetItemModel
+      .updateMany(
+        { budgetId: budgetObjectId, isDeleted: false },
+        { $set: { isDeleted: true, deletedAt: new Date() } },
+      )
+      .exec();
 
     return deletedBudget;
   }
 
-  async softDeleteBudgetItem(budgetId: string, itemId: string, userId: string): Promise<any> {
-    const deletedItem = await this.budgetItemModel.findOneAndUpdate(
-      { 
-        _id: new Types.ObjectId(itemId), 
-        budgetId: new Types.ObjectId(budgetId),
-        userId: new Types.ObjectId(userId), 
-        isDeleted: false 
-      },
-      { $set: { isDeleted: true, deletedAt: new Date() } },
-      { new: true },
-    ).exec();
+  async softDeleteBudgetItem(
+    budgetId: string,
+    itemId: string,
+    userId: string,
+  ): Promise<any> {
+    const deletedItem = await this.budgetItemModel
+      .findOneAndUpdate(
+        {
+          _id: new Types.ObjectId(itemId),
+          budgetId: new Types.ObjectId(budgetId),
+          userId: new Types.ObjectId(userId),
+          isDeleted: false,
+        },
+        { $set: { isDeleted: true, deletedAt: new Date() } },
+        { new: true },
+      )
+      .exec();
 
     if (!deletedItem) {
       throw new NotFoundException(`Budget item #${itemId} not found`);
@@ -176,11 +212,17 @@ export class BudgetsService {
     return deletedItem;
   }
 
-  async addItem(budgetId: string, userId: string, createItemDto: any): Promise<any> {
+  async addItem(
+    budgetId: string,
+    userId: string,
+    createItemDto: any,
+  ): Promise<any> {
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(budgetId);
 
-    const budget = await this.budgetModel.findOne({ _id: budgetObjectId, userId: userObjectId, isDeleted: false }).exec();
+    const budget = await this.budgetModel
+      .findOne({ _id: budgetObjectId, userId: userObjectId, isDeleted: false })
+      .exec();
     if (!budget) {
       throw new NotFoundException(`Budget #${budgetId} not found`);
     }
@@ -193,24 +235,34 @@ export class BudgetsService {
     return await newItem.save();
   }
 
-  async updateBudgetItem(budgetId: string, itemId: string, userId: string, updateDto: any): Promise<any> {
-    const updatedItem = await this.budgetItemModel.findOneAndUpdate(
-      { 
-        _id: new Types.ObjectId(itemId), 
-        budgetId: new Types.ObjectId(budgetId),
-        userId: new Types.ObjectId(userId), 
-        isDeleted: false 
-      },
-      { $set: updateDto },
-      { new: true },
-    ).exec();
+  async updateBudgetItem(
+    budgetId: string,
+    itemId: string,
+    userId: string,
+    updateDto: any,
+  ): Promise<any> {
+    const updatedItem = await this.budgetItemModel
+      .findOneAndUpdate(
+        {
+          _id: new Types.ObjectId(itemId),
+          budgetId: new Types.ObjectId(budgetId),
+          userId: new Types.ObjectId(userId),
+          isDeleted: false,
+        },
+        { $set: updateDto },
+        { new: true },
+      )
+      .exec();
 
     if (!updatedItem) {
       throw new NotFoundException(`Budget item #${itemId} not found`);
     }
     return updatedItem;
   }
-  private async appendSpentToItems(budget: any, budgetItems: any[]): Promise<any[]> {
+  private async appendSpentToItems(
+    budget: any,
+    budgetItems: any[],
+  ): Promise<any[]> {
     if (!budgetItems.length) return [];
 
     const now = new Date();
@@ -220,7 +272,7 @@ export class BudgetsService {
       {
         $match: {
           userId: budget.userId,
-          budgetItemId: { $in: budgetItems.map(item => item._id) },
+          budgetItemId: { $in: budgetItems.map((item) => item._id) },
           date: {
             $gte: budget.startDate,
             $lte: endDateLimit,
@@ -240,7 +292,7 @@ export class BudgetsService {
       spentMap.set(t._id.toString(), t.totalSpent);
     }
 
-    return budgetItems.map(item => ({
+    return budgetItems.map((item) => ({
       ...item.toObject(),
       spent: spentMap.get(item._id.toString()) || 0,
     }));

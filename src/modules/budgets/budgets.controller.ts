@@ -1,13 +1,23 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Request,
+} from '@nestjs/common';
 import { BudgetsService } from './budgets.service';
 import { CreateBudgetDto, CreateBudgetItemDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
 @Controller('budgets')
 export class BudgetsController {
-  constructor(private readonly budgetsService: BudgetsService) { }
+  constructor(private readonly budgetsService: BudgetsService) {}
 
   @Post()
   create(@Request() req, @Body() createBudgetDto: CreateBudgetDto) {
@@ -25,7 +35,11 @@ export class BudgetsController {
   }
 
   @Patch(':id')
-  update(@Request() req, @Param('id') id: string, @Body() updateBudgetDto: UpdateBudgetDto) {
+  update(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() updateBudgetDto: UpdateBudgetDto,
+  ) {
     return this.budgetsService.update(id, req.user.userId, updateBudgetDto);
   }
 
@@ -35,22 +49,39 @@ export class BudgetsController {
   }
 
   @Post(':id/items')
-  addItem(@Request() req, @Param('id') id: string, @Body() createItemDto: CreateBudgetItemDto) {
+  addItem(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() createItemDto: CreateBudgetItemDto,
+  ) {
     return this.budgetsService.addItem(id, req.user.userId, createItemDto);
   }
 
   @Delete(':id/items/:itemId')
-  removeItem(@Request() req, @Param('id') id: string, @Param('itemId') itemId: string) {
-    return this.budgetsService.softDeleteBudgetItem(id, itemId, req.user.userId);
+  removeItem(
+    @Request() req,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+  ) {
+    return this.budgetsService.softDeleteBudgetItem(
+      id,
+      itemId,
+      req.user.userId,
+    );
   }
 
   @Patch(':id/items/:itemId')
   updateItem(
-    @Request() req, 
-    @Param('id') id: string, 
-    @Param('itemId') itemId: string, 
-    @Body() updateDto: any
+    @Request() req,
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() updateDto: any,
   ) {
-    return this.budgetsService.updateBudgetItem(id, itemId, req.user.userId, updateDto);
+    return this.budgetsService.updateBudgetItem(
+      id,
+      itemId,
+      req.user.userId,
+      updateDto,
+    );
   }
 }

@@ -1,8 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-import { User } from '../../users/schemas/user.schema';
-import { Budget } from '../../budgets/schemas/budget.schema';
-import { BudgetItem } from '../../budgets/schemas/budget-item.schema';
+import { User } from '@/modules/users/schemas/user.schema';
+import { Budget } from '@/modules/budgets/schemas/budget.schema';
+import { BudgetItem } from '@/modules/budgets/schemas/budget-item.schema';
 
 export type BudgetPeriodReportDocument = BudgetPeriodReport & Document;
 
@@ -69,4 +69,5 @@ export class BudgetPeriodReport {
   items!: ReportItem[];
 }
 
-export const BudgetPeriodReportSchema = SchemaFactory.createForClass(BudgetPeriodReport);
+export const BudgetPeriodReportSchema =
+  SchemaFactory.createForClass(BudgetPeriodReport);
