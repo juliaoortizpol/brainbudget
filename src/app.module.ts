@@ -9,6 +9,7 @@ import { BudgetsModule } from './modules/budgets/budgets.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { GmailReaderModule } from './modules/gmail-reader/gmail-reader.module';
+import { InstitutionsModule } from './modules/institutions/institutions.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { GmailReaderModule } from './modules/gmail-reader/gmail-reader.module';
     TransactionsModule,
     AccountsModule,
     GmailReaderModule,
+    InstitutionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

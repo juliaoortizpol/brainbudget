@@ -464,6 +464,154 @@ for (const key of gmailReaderVariables) {
   }
 }
 
+const institutionsFolder = {
+  name: 'Institutions',
+  description:
+    'Authenticated users can read enabled institutions. Creating, editing, listing disabled entries, and disabling institutions require an admin JWT.',
+  item: [
+    {
+      name: '1. List Available Institutions',
+      request: {
+        method: 'GET',
+        header: [{ key: 'Authorization', value: 'Bearer {{jwt_token}}' }],
+        url: {
+          raw: '{{base_url}}/institutions',
+          host: ['{{base_url}}'],
+          path: ['institutions'],
+        },
+      },
+    },
+    {
+      name: '2. Admin - Create Institution',
+      event: [
+        {
+          listen: 'test',
+          script: {
+            type: 'text/javascript',
+            exec: [
+              'const response = pm.response.json();',
+              "if (response._id) pm.collectionVariables.set('institution_id', response._id);",
+            ],
+          },
+        },
+      ],
+      request: {
+        method: 'POST',
+        header: [
+          { key: 'Content-Type', value: 'application/json' },
+          { key: 'Authorization', value: 'Bearer {{jwt_token}}' },
+        ],
+        body: {
+          mode: 'raw',
+          raw: JSON.stringify(
+            {
+              name: 'Banreservas',
+              slug: 'banreservas',
+              aliases: ['Banco de Reservas'],
+              supportedAccountTypes: ['credit_card'],
+              emailRules: [
+                {
+                  senderAddresses: ['notificaciones@banreservas.com'],
+                  subjectKeywords: ['Notificación de Consumo', 'Consumo'],
+                  parserKey: 'banreservas.credit-card',
+                  parserVersion: 1,
+                  accountType: 'credit_card',
+                  enabled: true,
+                },
+              ],
+              enabled: true,
+            },
+            null,
+            2,
+          ),
+        },
+        url: {
+          raw: '{{base_url}}/admin/institutions',
+          host: ['{{base_url}}'],
+          path: ['admin', 'institutions'],
+        },
+      },
+    },
+    {
+      name: '3. Admin - List All Institutions',
+      request: {
+        method: 'GET',
+        header: [{ key: 'Authorization', value: 'Bearer {{jwt_token}}' }],
+        url: {
+          raw: '{{base_url}}/admin/institutions',
+          host: ['{{base_url}}'],
+          path: ['admin', 'institutions'],
+        },
+      },
+    },
+    {
+      name: '4. Get Institution',
+      request: {
+        method: 'GET',
+        header: [{ key: 'Authorization', value: 'Bearer {{jwt_token}}' }],
+        url: {
+          raw: '{{base_url}}/institutions/{{institution_id}}',
+          host: ['{{base_url}}'],
+          path: ['institutions', '{{institution_id}}'],
+        },
+      },
+    },
+    {
+      name: '5. Admin - Update Institution',
+      request: {
+        method: 'PATCH',
+        header: [
+          { key: 'Content-Type', value: 'application/json' },
+          { key: 'Authorization', value: 'Bearer {{jwt_token}}' },
+        ],
+        body: {
+          mode: 'raw',
+          raw: JSON.stringify(
+            { aliases: ['Banco de Reservas', 'Banreservas RD'] },
+            null,
+            2,
+          ),
+        },
+        url: {
+          raw: '{{base_url}}/admin/institutions/{{institution_id}}',
+          host: ['{{base_url}}'],
+          path: ['admin', 'institutions', '{{institution_id}}'],
+        },
+      },
+    },
+    {
+      name: '6. Admin - Disable Institution',
+      request: {
+        method: 'DELETE',
+        header: [{ key: 'Authorization', value: 'Bearer {{jwt_token}}' }],
+        url: {
+          raw: '{{base_url}}/admin/institutions/{{institution_id}}',
+          host: ['{{base_url}}'],
+          path: ['admin', 'institutions', '{{institution_id}}'],
+        },
+      },
+    },
+  ],
+};
+
+const institutionsIndex = collection.item.findIndex(
+  (item) => item.name === 'Institutions',
+);
+if (institutionsIndex !== -1) {
+  collection.item[institutionsIndex] = institutionsFolder;
+} else {
+  collection.item.push(institutionsFolder);
+}
+if (
+  !collection.variable.some((variable) => variable.key === 'institution_id')
+) {
+  collection.variable.push({
+    key: 'institution_id',
+    value: '',
+    type: 'string',
+  });
+}
+
 fs.writeFileSync(
   'BrainBudget.postman_collection.json',
   JSON.stringify(collection, null, 2),

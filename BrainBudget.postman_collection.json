@@ -670,6 +670,142 @@
           }
         }
       ]
+    },
+    {
+      "name": "Institutions",
+      "description": "Authenticated users can read enabled institutions. Creating, editing, listing disabled entries, and disabling institutions require an admin JWT.",
+      "item": [
+        {
+          "name": "1. List Available Institutions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/institutions",
+              "host": ["{{base_url}}"],
+              "path": ["institutions"]
+            }
+          }
+        },
+        {
+          "name": "2. Admin - Create Institution",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response._id) pm.collectionVariables.set('institution_id', response._id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Banreservas\",\n  \"slug\": \"banreservas\",\n  \"aliases\": [\n    \"Banco de Reservas\"\n  ],\n  \"supportedAccountTypes\": [\n    \"credit_card\"\n  ],\n  \"emailRules\": [\n    {\n      \"senderAddresses\": [\n        \"notificaciones@banreservas.com\"\n      ],\n      \"subjectKeywords\": [\n        \"Notificación de Consumo\",\n        \"Consumo\"\n      ],\n      \"parserKey\": \"banreservas.credit-card\",\n      \"parserVersion\": 1,\n      \"accountType\": \"credit_card\",\n      \"enabled\": true\n    }\n  ],\n  \"enabled\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/institutions",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "institutions"]
+            }
+          }
+        },
+        {
+          "name": "3. Admin - List All Institutions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/institutions",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "institutions"]
+            }
+          }
+        },
+        {
+          "name": "4. Get Institution",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/institutions/{{institution_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["institutions", "{{institution_id}}"]
+            }
+          }
+        },
+        {
+          "name": "5. Admin - Update Institution",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"aliases\": [\n    \"Banco de Reservas\",\n    \"Banreservas RD\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/institutions/{{institution_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "institutions", "{{institution_id}}"]
+            }
+          }
+        },
+        {
+          "name": "6. Admin - Disable Institution",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admin/institutions/{{institution_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "institutions", "{{institution_id}}"]
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -695,6 +831,11 @@
     },
     {
       "key": "gmail_page_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "institution_id",
       "value": "",
       "type": "string"
     }
