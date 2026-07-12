@@ -8,6 +8,7 @@ import { UsersModule } from './modules/users/users.module';
 import { BudgetsModule } from './modules/budgets/budgets.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
+import { GmailReaderModule } from './modules/gmail-reader/gmail-reader.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
     BudgetsModule,
     TransactionsModule,
     AccountsModule,
+    GmailReaderModule,
   ],
   controllers: [AppController],
   providers: [AppService],
