@@ -24,13 +24,8 @@
             },
             "url": {
               "raw": "{{base_url}}/auth/signup",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "auth",
-                "signup"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["auth", "signup"]
             }
           }
         },
@@ -65,13 +60,8 @@
             },
             "url": {
               "raw": "{{base_url}}/auth/login",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "auth",
-                "login"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
             }
           }
         },
@@ -87,13 +77,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/auth/profile",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "auth",
-                "profile"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["auth", "profile"]
             }
           }
         },
@@ -104,13 +89,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/auth/logout",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "auth",
-                "logout"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["auth", "logout"]
             }
           }
         },
@@ -121,13 +101,8 @@
             "header": [],
             "url": {
               "raw": "{{base_url}}/auth/google",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "auth",
-                "google"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["auth", "google"]
             }
           }
         }
@@ -156,12 +131,8 @@
             },
             "url": {
               "raw": "{{base_url}}/categories",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "categories"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["categories"]
             }
           }
         },
@@ -177,12 +148,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/categories",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "categories"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["categories"]
             }
           }
         },
@@ -198,13 +165,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/categories/YOUR_CATEGORY_ID",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "categories",
-                "YOUR_CATEGORY_ID"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["categories", "YOUR_CATEGORY_ID"]
             }
           }
         },
@@ -228,13 +190,8 @@
             },
             "url": {
               "raw": "{{base_url}}/categories/YOUR_CATEGORY_ID",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "categories",
-                "YOUR_CATEGORY_ID"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["categories", "YOUR_CATEGORY_ID"]
             }
           }
         },
@@ -250,13 +207,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/categories/YOUR_CATEGORY_ID",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "categories",
-                "YOUR_CATEGORY_ID"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["categories", "YOUR_CATEGORY_ID"]
             }
           }
         }
@@ -285,12 +237,8 @@
             },
             "url": {
               "raw": "{{base_url}}/budgets",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "budgets"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["budgets"]
             }
           }
         },
@@ -306,12 +254,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/budgets",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "budgets"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["budgets"]
             }
           }
         },
@@ -327,13 +271,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/budgets/YOUR_BUDGET_ID",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "budgets",
-                "YOUR_BUDGET_ID"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["budgets", "YOUR_BUDGET_ID"]
             }
           }
         },
@@ -357,13 +296,8 @@
             },
             "url": {
               "raw": "{{base_url}}/budgets/YOUR_BUDGET_ID",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "budgets",
-                "YOUR_BUDGET_ID"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["budgets", "YOUR_BUDGET_ID"]
             }
           }
         },
@@ -379,13 +313,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/budgets/YOUR_BUDGET_ID",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "budgets",
-                "YOUR_BUDGET_ID"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["budgets", "YOUR_BUDGET_ID"]
             }
           }
         },
@@ -409,14 +338,8 @@
             },
             "url": {
               "raw": "{{base_url}}/budgets/YOUR_BUDGET_ID/items",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "budgets",
-                "YOUR_BUDGET_ID",
-                "items"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["budgets", "YOUR_BUDGET_ID", "items"]
             }
           }
         },
@@ -432,15 +355,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/budgets/YOUR_BUDGET_ID/items/YOUR_ITEM_ID",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "budgets",
-                "YOUR_BUDGET_ID",
-                "items",
-                "YOUR_ITEM_ID"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["budgets", "YOUR_BUDGET_ID", "items", "YOUR_ITEM_ID"]
             }
           }
         },
@@ -464,15 +380,8 @@
             },
             "url": {
               "raw": "{{base_url}}/budgets/YOUR_BUDGET_ID/items/YOUR_ITEM_ID",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "budgets",
-                "YOUR_BUDGET_ID",
-                "items",
-                "YOUR_ITEM_ID"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["budgets", "YOUR_BUDGET_ID", "items", "YOUR_ITEM_ID"]
             }
           }
         }
@@ -501,12 +410,8 @@
             },
             "url": {
               "raw": "{{base_url}}/transactions",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "transactions"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["transactions"]
             }
           }
         },
@@ -522,12 +427,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/transactions?page=1&limit=10",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "transactions"
-              ],
+              "host": ["{{base_url}}"],
+              "path": ["transactions"],
               "query": [
                 {
                   "key": "page",
@@ -553,13 +454,8 @@
             ],
             "url": {
               "raw": "{{base_url}}/transactions/YOUR_TRANSACTION_ID",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "transactions",
-                "YOUR_TRANSACTION_ID"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["transactions", "YOUR_TRANSACTION_ID"]
             }
           }
         },
@@ -583,13 +479,8 @@
             },
             "url": {
               "raw": "{{base_url}}/transactions/YOUR_TRANSACTION_ID",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "transactions",
-                "YOUR_TRANSACTION_ID"
-              ]
+              "host": ["{{base_url}}"],
+              "path": ["transactions", "YOUR_TRANSACTION_ID"]
             }
           }
         },
@@ -605,13 +496,176 @@
             ],
             "url": {
               "raw": "{{base_url}}/transactions/YOUR_TRANSACTION_ID",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "transactions",
-                "YOUR_TRANSACTION_ID"
+              "host": ["{{base_url}}"],
+              "path": ["transactions", "YOUR_TRANSACTION_ID"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Gmail Reader",
+      "description": "Connect Gmail and read normalized messages. Complete Google consent by opening the URL returned by the first request in a browser.",
+      "item": [
+        {
+          "name": "1. Get Gmail Authorization URL",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.url) pm.collectionVariables.set('gmail_auth_url', response.url);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gmail-reader/auth-url",
+              "host": ["{{base_url}}"],
+              "path": ["gmail-reader", "auth-url"]
+            },
+            "description": "After sending this request, open the returned URL (or {{gmail_auth_url}}) in a browser and complete Google consent. Google redirects to /gmail-reader/oauth/callback."
+          }
+        },
+        {
+          "name": "2. Get Gmail Connection Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gmail-reader/status",
+              "host": ["{{base_url}}"],
+              "path": ["gmail-reader", "status"]
+            }
+          }
+        },
+        {
+          "name": "3. List Recent Gmail Messages",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const response = pm.response.json();",
+                  "if (response.messages?.length) pm.collectionVariables.set('gmail_message_id', response.messages[0].id);",
+                  "if (response.nextPageToken) pm.collectionVariables.set('gmail_page_token', response.nextPageToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gmail-reader/messages?query=newer_than%3A7d&maxResults=10&includeBody=true",
+              "host": ["{{base_url}}"],
+              "path": ["gmail-reader", "messages"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "newer_than:7d"
+                },
+                {
+                  "key": "maxResults",
+                  "value": "10"
+                },
+                {
+                  "key": "includeBody",
+                  "value": "true"
+                }
               ]
+            }
+          }
+        },
+        {
+          "name": "4. List Next Gmail Page",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gmail-reader/messages?query=newer_than%3A30d&maxResults=5&includeBody=false&pageToken={{gmail_page_token}}",
+              "host": ["{{base_url}}"],
+              "path": ["gmail-reader", "messages"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "newer_than:30d"
+                },
+                {
+                  "key": "maxResults",
+                  "value": "5"
+                },
+                {
+                  "key": "includeBody",
+                  "value": "false"
+                },
+                {
+                  "key": "pageToken",
+                  "value": "{{gmail_page_token}}"
+                }
+              ]
+            },
+            "description": "Run List Recent Gmail Messages first so gmail_page_token is populated."
+          }
+        },
+        {
+          "name": "5. Get One Gmail Message",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gmail-reader/messages/{{gmail_message_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["gmail-reader", "messages", "{{gmail_message_id}}"]
+            },
+            "description": "Run List Recent Gmail Messages first so gmail_message_id is populated."
+          }
+        },
+        {
+          "name": "6. Disconnect Gmail",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/gmail-reader/connection",
+              "host": ["{{base_url}}"],
+              "path": ["gmail-reader", "connection"]
             }
           }
         }
@@ -626,6 +680,21 @@
     },
     {
       "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "gmail_auth_url",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "gmail_message_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "gmail_page_token",
       "value": "",
       "type": "string"
     }

@@ -2,7 +2,7 @@ import {
   BadGatewayException,
   Injectable,
   NotFoundException,
-  UnauthorizedException,
+  HttpStatus,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
@@ -16,6 +16,10 @@ import {
   GmailReaderConnectionDocument,
 } from './schemas/gmail-reader-connection.schema';
 import { GmailMessage, GmailMessagePage } from './gmail-reader.types';
+import {
+  GmailReaderErrorCode,
+  GmailReaderException,
+} from './gmail-reader.errors';
 
 @Injectable()
 export class GmailReaderService {
@@ -133,8 +137,10 @@ export class GmailReaderService {
         resultSizeEstimate: page.data.resultSizeEstimate || 0,
       };
     } catch (error: any) {
-      throw new BadGatewayException(
-        `Could not read Gmail messages: ${error.message}`,
+      return this.handleReadError(
+        userId,
+        error,
+        'Could not read Gmail messages',
       );
     }
   }
@@ -151,8 +157,10 @@ export class GmailReaderService {
       await connection.save();
       return mapGmailMessage(response.data, true);
     } catch (error: any) {
-      throw new BadGatewayException(
-        `Could not read Gmail message: ${error.message}`,
+      return this.handleReadError(
+        userId,
+        error,
+        'Could not read Gmail message',
       );
     }
   }
@@ -163,7 +171,11 @@ export class GmailReaderService {
       .select('+refreshToken')
       .exec();
     if (!connection?.refreshToken) {
-      throw new UnauthorizedException('Gmail is not connected');
+      throw new GmailReaderException(
+        GmailReaderErrorCode.NOT_CONNECTED,
+        'Gmail is not connected',
+        HttpStatus.UNAUTHORIZED,
+      );
     }
     return {
       gmail: this.clientFactory.createGmailClient(connection.refreshToken),
@@ -197,7 +209,11 @@ export class GmailReaderService {
       Date.now() - issuedAt > 10 * 60 * 1000 ||
       !validSignature
     ) {
-      throw new UnauthorizedException('Invalid or expired OAuth state');
+      throw new GmailReaderException(
+        GmailReaderErrorCode.REAUTH_REQUIRED,
+        'Invalid or expired OAuth state',
+        HttpStatus.UNAUTHORIZED,
+      );
     }
     return userId;
   }
@@ -208,5 +224,55 @@ export class GmailReaderService {
       this.configService.get<string>('GOOGLE_CLIENT_SECRET') ||
       'development-gmail-state-secret'
     );
+  }
+
+  private async handleReadError(
+    userId: string,
+    error: any,
+    fallbackMessage: string,
+  ): Promise<never> {
+    if (this.isAuthorizationError(error)) {
+      await this.connectionModel
+        .updateOne(
+          { userId: new Types.ObjectId(userId) },
+          { $set: { status: 're_auth_required' } },
+        )
+        .exec();
+      throw new GmailReaderException(
+        GmailReaderErrorCode.REAUTH_REQUIRED,
+        'Gmail authorization is no longer valid',
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    if (this.isNotFoundError(error)) {
+      throw new GmailReaderException(
+        GmailReaderErrorCode.MESSAGE_NOT_FOUND,
+        'Gmail message was not found',
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    throw new GmailReaderException(
+      GmailReaderErrorCode.TEMPORARILY_UNAVAILABLE,
+      fallbackMessage,
+      HttpStatus.BAD_GATEWAY,
+    );
+  }
+
+  private isAuthorizationError(error: any): boolean {
+    const status = error?.response?.status ?? error?.code;
+    const providerCode = error?.response?.data?.error;
+    const message = String(error?.message || '').toLowerCase();
+    return (
+      status === 401 ||
+      providerCode === 'invalid_grant' ||
+      message.includes('invalid_grant') ||
+      message.includes('invalid credentials')
+    );
+  }
+
+  private isNotFoundError(error: any): boolean {
+    return (error?.response?.status ?? error?.code) === 404;
   }
 }

@@ -16,7 +16,10 @@ export class GmailReaderConnection {
   @Prop({ required: true, select: false })
   refreshToken!: string;
 
-  @Prop({ enum: ['active', 'disconnected', 'error'], default: 'active' })
+  @Prop({
+    enum: ['active', 'disconnected', 're_auth_required', 'error'],
+    default: 'active',
+  })
   status!: string;
 
   @Prop()

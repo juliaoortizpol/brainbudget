@@ -1,6 +1,10 @@
 import { ConfigService } from '@nestjs/config';
 import { GmailClientFactory } from './gmail-client.factory';
 import { GmailReaderService } from './gmail-reader.service';
+import {
+  GmailReaderErrorCode,
+  GmailReaderException,
+} from './gmail-reader.errors';
 
 describe('GmailReaderService', () => {
   it('lists and normalizes a page of Gmail messages', async () => {
@@ -76,5 +80,79 @@ describe('GmailReaderService', () => {
     });
     expect(connection.lastReadAt).toBeInstanceOf(Date);
     expect(connection.save).toHaveBeenCalled();
+  });
+
+  it('returns a stable error when Gmail is not connected', async () => {
+    const connectionModel = {
+      findOne: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue(null),
+        }),
+      }),
+    };
+    const service = new GmailReaderService(
+      connectionModel as any,
+      {} as GmailClientFactory,
+      { get: jest.fn() } as unknown as ConfigService,
+    );
+
+    await expect(
+      service.listMessages('507f1f77bcf86cd799439011', {
+        query: 'newer_than:7d',
+        maxResults: 25,
+        includeBody: true,
+      }),
+    ).rejects.toMatchObject({
+      code: GmailReaderErrorCode.NOT_CONNECTED,
+    });
+  });
+
+  it('marks a rejected refresh token as requiring authorization', async () => {
+    const connectionModel = {
+      findOne: jest.fn().mockReturnValue({
+        select: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ refreshToken: 'revoked-token' }),
+        }),
+      }),
+      updateOne: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue(undefined),
+      }),
+    };
+    const gmail = {
+      users: {
+        messages: {
+          list: jest.fn().mockRejectedValue({
+            response: { status: 401, data: { error: 'invalid_grant' } },
+          }),
+        },
+      },
+    };
+    const service = new GmailReaderService(
+      connectionModel as any,
+      {
+        createGmailClient: jest.fn().mockReturnValue(gmail),
+      } as unknown as GmailClientFactory,
+      { get: jest.fn() } as unknown as ConfigService,
+    );
+
+    let thrown: unknown;
+    try {
+      await service.listMessages('507f1f77bcf86cd799439011', {
+        query: 'newer_than:7d',
+        maxResults: 25,
+        includeBody: true,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(GmailReaderException);
+    expect(thrown).toMatchObject({
+      code: GmailReaderErrorCode.REAUTH_REQUIRED,
+    });
+    expect(connectionModel.updateOne).toHaveBeenCalledWith(
+      { userId: expect.anything() },
+      { $set: { status: 're_auth_required' } },
+    );
   });
 });
