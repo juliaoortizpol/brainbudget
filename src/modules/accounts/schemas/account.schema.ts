@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { User } from '@/modules/users/schemas/user.schema';
+import { Institution } from '@/modules/institutions/schemas/institution.schema';
 
 export type AccountDocument = Account & Document;
 
@@ -14,6 +15,9 @@ export class Account {
 
   @Prop({ required: true })
   institution!: string;
+
+  @Prop({ type: Types.ObjectId, ref: Institution.name })
+  institutionId?: Types.ObjectId;
 
   @Prop({
     enum: [

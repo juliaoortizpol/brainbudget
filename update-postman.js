@@ -612,6 +612,147 @@ if (
   });
 }
 
+const accountsFolder = {
+  name: 'Accounts',
+  description:
+    'Use institutionId for a registered institution, or institution for a custom bank.',
+  item: [
+    {
+      name: '1. Create Account With Registered Institution',
+      event: [
+        {
+          listen: 'test',
+          script: {
+            type: 'text/javascript',
+            exec: [
+              'const response = pm.response.json();',
+              "if (response._id) pm.collectionVariables.set('account_id', response._id);",
+            ],
+          },
+        },
+      ],
+      request: {
+        method: 'POST',
+        header: [
+          { key: 'Content-Type', value: 'application/json' },
+          { key: 'Authorization', value: 'Bearer {{jwt_token}}' },
+        ],
+        body: {
+          mode: 'raw',
+          raw: JSON.stringify(
+            {
+              name: 'My Banreservas Card',
+              institutionId: '{{institution_id}}',
+              type: 'credit_card',
+              last4Digits: '4134',
+              status: 'active',
+            },
+            null,
+            2,
+          ),
+        },
+        url: {
+          raw: '{{base_url}}/accounts',
+          host: ['{{base_url}}'],
+          path: ['accounts'],
+        },
+        description:
+          'Create an institution first so institution_id is populated.',
+      },
+    },
+    {
+      name: '2. Create Account With Custom Bank',
+      event: [
+        {
+          listen: 'test',
+          script: {
+            type: 'text/javascript',
+            exec: [
+              'const response = pm.response.json();',
+              "if (response._id) pm.collectionVariables.set('account_id', response._id);",
+            ],
+          },
+        },
+      ],
+      request: {
+        method: 'POST',
+        header: [
+          { key: 'Content-Type', value: 'application/json' },
+          { key: 'Authorization', value: 'Bearer {{jwt_token}}' },
+        ],
+        body: {
+          mode: 'raw',
+          raw: JSON.stringify(
+            {
+              name: 'Community Savings',
+              institution: 'Community Bank',
+              type: 'savings',
+              status: 'active',
+            },
+            null,
+            2,
+          ),
+        },
+        url: {
+          raw: '{{base_url}}/accounts',
+          host: ['{{base_url}}'],
+          path: ['accounts'],
+        },
+      },
+    },
+    {
+      name: '3. List Accounts',
+      request: {
+        method: 'GET',
+        header: [{ key: 'Authorization', value: 'Bearer {{jwt_token}}' }],
+        url: {
+          raw: '{{base_url}}/accounts',
+          host: ['{{base_url}}'],
+          path: ['accounts'],
+        },
+      },
+    },
+    {
+      name: '4. Change Account To Custom Bank',
+      request: {
+        method: 'PATCH',
+        header: [
+          { key: 'Content-Type', value: 'application/json' },
+          { key: 'Authorization', value: 'Bearer {{jwt_token}}' },
+        ],
+        body: {
+          mode: 'raw',
+          raw: JSON.stringify(
+            {
+              institutionId: null,
+              institution: 'Community Bank',
+            },
+            null,
+            2,
+          ),
+        },
+        url: {
+          raw: '{{base_url}}/accounts/{{account_id}}',
+          host: ['{{base_url}}'],
+          path: ['accounts', '{{account_id}}'],
+        },
+      },
+    },
+  ],
+};
+
+const accountsIndex = collection.item.findIndex(
+  (item) => item.name === 'Accounts',
+);
+if (accountsIndex !== -1) {
+  collection.item[accountsIndex] = accountsFolder;
+} else {
+  collection.item.push(accountsFolder);
+}
+if (!collection.variable.some((variable) => variable.key === 'account_id')) {
+  collection.variable.push({ key: 'account_id', value: '', type: 'string' });
+}
+
 fs.writeFileSync(
   'BrainBudget.postman_collection.json',
   JSON.stringify(collection, null, 2),

@@ -1,14 +1,37 @@
-import { IsString, IsOptional, IsEnum, IsNumber, MaxLength, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsNumber,
+  IsMongoId,
+  MaxLength,
+  ValidateIf,
+} from 'class-validator';
 
 export class CreateAccountDto {
   @IsString()
   name: string;
 
+  @IsOptional()
   @IsString()
-  institution: string;
+  institution?: string;
 
   @IsOptional()
-  @IsEnum(['checking', 'savings', 'credit_card', 'investment', 'loan', 'brokerage', 'retirement', 'other'])
+  @ValidateIf((_, value) => value !== null)
+  @IsMongoId()
+  institutionId?: string | null;
+
+  @IsOptional()
+  @IsEnum([
+    'checking',
+    'savings',
+    'credit_card',
+    'investment',
+    'loan',
+    'brokerage',
+    'retirement',
+    'other',
+  ])
   type?: string;
 
   @IsOptional()
