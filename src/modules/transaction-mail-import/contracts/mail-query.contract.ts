@@ -6,5 +6,6 @@ export interface MailQueryOptions {
 export interface BuiltMailQuery {
   query: string | null;
   senderAddresses: string[];
+  subjectKeywords: string[];
   supportedAccountIds: string[];
 }

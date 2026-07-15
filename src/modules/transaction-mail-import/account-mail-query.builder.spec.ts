@@ -51,12 +51,13 @@ describe('AccountMailQueryBuilder', () => {
   it('builds one query with normalized and deduplicated senders', () => {
     expect(builder.buildMailQueryForUserAccounts(context)).toEqual({
       query:
-        '{from:alertas@popular.com.do OR from:notificaciones@banreservas.com OR from:shared@alerts.test} newer_than:30d',
+        '{({from:notificaciones@banreservas.com OR from:shared@alerts.test} subject:"Consumo") OR ({from:alertas@popular.com.do OR from:shared@alerts.test} subject:"Alerta de consumo")} newer_than:30d',
       senderAddresses: [
         'alertas@popular.com.do',
         'notificaciones@banreservas.com',
         'shared@alerts.test',
       ],
+      subjectKeywords: ['Alerta de consumo', 'Consumo'],
       supportedAccountIds: ['account-1', 'account-2'],
     });
   });
@@ -66,7 +67,7 @@ describe('AccountMailQueryBuilder', () => {
     const result = builder.buildMailQueryForUserAccounts(context, { after });
 
     expect(result.query).toBe(
-      `{from:alertas@popular.com.do OR from:notificaciones@banreservas.com OR from:shared@alerts.test} after:${Math.floor(
+      `{({from:notificaciones@banreservas.com OR from:shared@alerts.test} subject:"Consumo") OR ({from:alertas@popular.com.do OR from:shared@alerts.test} subject:"Alerta de consumo")} after:${Math.floor(
         after.getTime() / 1000,
       )}`,
     );
@@ -82,6 +83,7 @@ describe('AccountMailQueryBuilder', () => {
     expect(result).toEqual({
       query: null,
       senderAddresses: [],
+      subjectKeywords: [],
       supportedAccountIds: [],
     });
   });
@@ -93,5 +95,38 @@ describe('AccountMailQueryBuilder', () => {
         newerThanDays: 7,
       }),
     ).toThrow('Use either after or newerThanDays, not both');
+  });
+
+  it('does not query a rule that has no subject keywords', () => {
+    const result = builder.buildMailQueryForUserAccounts({
+      ...context,
+      rules: [
+        {
+          ...context.rules[0],
+          subjectKeywords: [],
+        },
+      ],
+      supportedAccounts: [context.supportedAccounts[0]],
+    });
+
+    expect(result).toEqual({
+      query: null,
+      senderAddresses: [],
+      subjectKeywords: [],
+      supportedAccountIds: [],
+    });
+  });
+
+  it('keeps each institution subject paired with its own sender', () => {
+    const result = builder.buildMailQueryForUserAccounts(context, {
+      newerThanDays: 7,
+    });
+
+    expect(result.query).toContain(
+      'from:notificaciones@banreservas.com OR from:shared@alerts.test} subject:"Consumo"',
+    );
+    expect(result.query).toContain(
+      'from:alertas@popular.com.do OR from:shared@alerts.test} subject:"Alerta de consumo"',
+    );
   });
 });
