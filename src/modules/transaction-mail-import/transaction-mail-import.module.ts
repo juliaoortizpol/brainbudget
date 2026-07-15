@@ -6,6 +6,9 @@ import { InstitutionsModule } from '@/modules/institutions/institutions.module';
 import { GmailReaderModule } from '@/modules/gmail-reader/gmail-reader.module';
 import { AccountMailFetcherService } from './account-mail-fetcher.service';
 import { InstitutionMailParsersModule } from './parsers/institution-mail-parsers.module';
+import { TransactionMailImportPreviewService } from './transaction-mail-import-preview.service';
+import { TransactionMailImportAdminController } from './transaction-mail-import-admin.controller';
+import { AdminGuard } from '@/common/guards/admin.guard';
 
 @Module({
   imports: [
@@ -18,11 +21,14 @@ import { InstitutionMailParsersModule } from './parsers/institution-mail-parsers
     AccountMailQueryBuilder,
     AccountMailContextService,
     AccountMailFetcherService,
+    TransactionMailImportPreviewService,
+    AdminGuard,
   ],
   exports: [
     AccountMailQueryBuilder,
     AccountMailContextService,
     AccountMailFetcherService,
   ],
+  controllers: [TransactionMailImportAdminController],
 })
 export class TransactionMailImportModule {}

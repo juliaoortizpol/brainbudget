@@ -755,6 +755,52 @@ if (!collection.variable.some((variable) => variable.key === 'account_id')) {
   collection.variable.push({ key: 'account_id', value: '', type: 'string' });
 }
 
+const transactionMailImportFolder = {
+  name: 'Transaction Mail Import',
+  description:
+    'Admin-only tools for testing the account-to-Gmail-to-parser pipeline. Preview does not save transactions.',
+  item: [
+    {
+      name: 'Preview Mail Import (Admin)',
+      request: {
+        method: 'POST',
+        header: [
+          { key: 'Content-Type', value: 'application/json' },
+          { key: 'Authorization', value: 'Bearer {{jwt_token}}' },
+        ],
+        body: {
+          mode: 'raw',
+          raw: JSON.stringify(
+            {
+              newerThanDays: 30,
+              maxPages: 5,
+              pageSize: 50,
+            },
+            null,
+            2,
+          ),
+        },
+        url: {
+          raw: '{{base_url}}/admin/transaction-mail-import/preview',
+          host: ['{{base_url}}'],
+          path: ['admin', 'transaction-mail-import', 'preview'],
+        },
+        description:
+          'Uses the authenticated admin user accounts and Gmail connection. Builds the Gmail query, reads messages, and parses supported transactions without persisting them.',
+      },
+    },
+  ],
+};
+
+const transactionMailImportIndex = collection.item.findIndex(
+  (item) => item.name === 'Transaction Mail Import',
+);
+if (transactionMailImportIndex !== -1) {
+  collection.item[transactionMailImportIndex] = transactionMailImportFolder;
+} else {
+  collection.item.push(transactionMailImportFolder);
+}
+
 fs.writeFileSync(
   'BrainBudget.postman_collection.json',
   JSON.stringify(collection, null, 2),

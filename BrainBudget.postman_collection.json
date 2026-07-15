@@ -930,6 +930,38 @@
           }
         }
       ]
+    },
+    {
+      "name": "Transaction Mail Import",
+      "description": "Admin-only tools for testing the account-to-Gmail-to-parser pipeline. Preview does not save transactions.",
+      "item": [
+        {
+          "name": "Preview Mail Import (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newerThanDays\": 30,\n  \"maxPages\": 5,\n  \"pageSize\": 50\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admin/transaction-mail-import/preview",
+              "host": ["{{base_url}}"],
+              "path": ["admin", "transaction-mail-import", "preview"]
+            },
+            "description": "Uses the authenticated admin user accounts and Gmail connection. Builds the Gmail query, reads messages, and parses supported transactions without persisting them."
+          }
+        }
+      ]
     }
   ],
   "variable": [
