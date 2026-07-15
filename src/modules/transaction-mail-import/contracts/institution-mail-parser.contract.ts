@@ -8,5 +8,8 @@ export interface InstitutionMailParser {
 
   canParse(message: GmailMessage, rule: MailImportRule): boolean;
 
-  parse(message: GmailMessage, rule: MailImportRule): ParsedMailTransaction[];
+  parse(
+    message: GmailMessage,
+    rule: MailImportRule,
+  ): ParsedMailTransaction[] | Promise<ParsedMailTransaction[]>;
 }

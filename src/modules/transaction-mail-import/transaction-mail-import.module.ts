@@ -5,9 +5,15 @@ import { AccountsModule } from '@/modules/accounts/accounts.module';
 import { InstitutionsModule } from '@/modules/institutions/institutions.module';
 import { GmailReaderModule } from '@/modules/gmail-reader/gmail-reader.module';
 import { AccountMailFetcherService } from './account-mail-fetcher.service';
+import { InstitutionMailParsersModule } from './parsers/institution-mail-parsers.module';
 
 @Module({
-  imports: [AccountsModule, InstitutionsModule, GmailReaderModule],
+  imports: [
+    AccountsModule,
+    InstitutionsModule,
+    GmailReaderModule,
+    InstitutionMailParsersModule,
+  ],
   providers: [
     AccountMailQueryBuilder,
     AccountMailContextService,
