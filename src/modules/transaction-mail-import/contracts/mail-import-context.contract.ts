@@ -1,6 +1,7 @@
 import { SupportedAccountType } from '@/modules/institutions/institution.constants';
 
 export enum UnsupportedMailAccountReason {
+  ACCOUNT_NOT_ACTIVE = 'ACCOUNT_NOT_ACTIVE',
   CUSTOM_INSTITUTION = 'CUSTOM_INSTITUTION',
   INSTITUTION_DISABLED = 'INSTITUTION_DISABLED',
   NO_ENABLED_EMAIL_RULES = 'NO_ENABLED_EMAIL_RULES',
