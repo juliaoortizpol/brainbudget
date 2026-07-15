@@ -10,6 +10,8 @@ import { TransactionMailImportPreviewService } from './transaction-mail-import-p
 import { TransactionMailImportAdminController } from './transaction-mail-import-admin.controller';
 import { AdminGuard } from '@/common/guards/admin.guard';
 import { TransactionMailAccountMatcher } from './transaction-mail-account.matcher';
+import { TransactionsModule } from '@/modules/transactions/transactions.module';
+import { TransactionMailPersistenceService } from './transaction-mail-persistence.service';
 
 @Module({
   imports: [
@@ -17,12 +19,14 @@ import { TransactionMailAccountMatcher } from './transaction-mail-account.matche
     InstitutionsModule,
     GmailReaderModule,
     InstitutionMailParsersModule,
+    TransactionsModule,
   ],
   providers: [
     AccountMailQueryBuilder,
     AccountMailContextService,
     AccountMailFetcherService,
     TransactionMailAccountMatcher,
+    TransactionMailPersistenceService,
     TransactionMailImportPreviewService,
     AdminGuard,
   ],
@@ -31,6 +35,7 @@ import { TransactionMailAccountMatcher } from './transaction-mail-account.matche
     AccountMailContextService,
     AccountMailFetcherService,
     TransactionMailAccountMatcher,
+    TransactionMailPersistenceService,
   ],
   controllers: [TransactionMailImportAdminController],
 })
