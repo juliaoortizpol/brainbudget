@@ -39,11 +39,22 @@ describe('TransactionMailImportPreviewService', () => {
     const parsingService = {
       parseMails: jest.fn().mockResolvedValue(parsing),
     };
+    const matching = {
+      transactionsReviewed: 1,
+      transactionsMatched: 1,
+      transactionsUnmatched: 0,
+      transactions: [{ messageId: 'message-1', accountId: 'account-1' }],
+      issues: [],
+    };
+    const accountMatcher = {
+      match: jest.fn().mockReturnValue(matching),
+    };
     const service = new TransactionMailImportPreviewService(
       contextService as any,
       queryBuilder as any,
       fetcher as any,
       parsingService as any,
+      accountMatcher as any,
     );
 
     const result = await service.preview('user-1', {
@@ -58,10 +69,15 @@ describe('TransactionMailImportPreviewService', () => {
       accounts: { reviewed: 1 },
       fetch: { messagesFound: 1, pagesRead: 1 },
       parsing,
+      matching,
     });
     expect(parsingService.parseMails).toHaveBeenCalledWith(
       messages,
       context.rules,
+    );
+    expect(accountMatcher.match).toHaveBeenCalledWith(
+      parsing.transactions,
+      context.supportedAccounts,
     );
   });
 });

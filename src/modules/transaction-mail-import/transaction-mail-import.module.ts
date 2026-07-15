@@ -9,6 +9,7 @@ import { InstitutionMailParsersModule } from './parsers/institution-mail-parsers
 import { TransactionMailImportPreviewService } from './transaction-mail-import-preview.service';
 import { TransactionMailImportAdminController } from './transaction-mail-import-admin.controller';
 import { AdminGuard } from '@/common/guards/admin.guard';
+import { TransactionMailAccountMatcher } from './transaction-mail-account.matcher';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AdminGuard } from '@/common/guards/admin.guard';
     AccountMailQueryBuilder,
     AccountMailContextService,
     AccountMailFetcherService,
+    TransactionMailAccountMatcher,
     TransactionMailImportPreviewService,
     AdminGuard,
   ],
@@ -28,6 +30,7 @@ import { AdminGuard } from '@/common/guards/admin.guard';
     AccountMailQueryBuilder,
     AccountMailContextService,
     AccountMailFetcherService,
+    TransactionMailAccountMatcher,
   ],
   controllers: [TransactionMailImportAdminController],
 })

@@ -1,3 +1,4 @@
+export * from './account-matching.contract';
 export * from './institution-mail-parser.contract';
 export * from './mail-fetch.contract';
 export * from './mail-import-context.contract';

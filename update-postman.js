@@ -786,7 +786,7 @@ const transactionMailImportFolder = {
           path: ['admin', 'transaction-mail-import', 'preview'],
         },
         description:
-          'Uses the authenticated admin user accounts and Gmail connection. Builds the Gmail query, reads messages, and parses supported transactions without persisting them.',
+          'Uses the authenticated admin user accounts and Gmail connection. Builds the Gmail query, reads messages, parses supported transactions, and matches them to accounts without persisting them. Review matching.transactions and matching.issues in the response.',
       },
     },
   ],

@@ -4,6 +4,7 @@ import { AccountMailQueryBuilder } from './account-mail-query.builder';
 import { AccountMailFetcherService } from './account-mail-fetcher.service';
 import { InstitutionMailParsingService } from './parsers/institution-mail-parsing.service';
 import { PreviewTransactionMailImportDto } from './dto/preview-transaction-mail-import.dto';
+import { TransactionMailAccountMatcher } from './transaction-mail-account.matcher';
 
 @Injectable()
 export class TransactionMailImportPreviewService {
@@ -12,6 +13,7 @@ export class TransactionMailImportPreviewService {
     private readonly queryBuilder: AccountMailQueryBuilder,
     private readonly fetcher: AccountMailFetcherService,
     private readonly parsingService: InstitutionMailParsingService,
+    private readonly accountMatcher: TransactionMailAccountMatcher,
   ) {}
 
   async preview(userId: string, options: PreviewTransactionMailImportDto) {
@@ -32,6 +34,10 @@ export class TransactionMailImportPreviewService {
       fetched.messages,
       context.rules,
     );
+    const matching = this.accountMatcher.match(
+      parsing.transactions,
+      context.supportedAccounts,
+    );
 
     return {
       mode: 'preview',
@@ -50,6 +56,7 @@ export class TransactionMailImportPreviewService {
         nextPageToken: fetched.nextPageToken,
       },
       parsing,
+      matching,
     };
   }
 }
