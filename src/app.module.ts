@@ -10,6 +10,7 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { GmailReaderModule } from './modules/gmail-reader/gmail-reader.module';
 import { InstitutionsModule } from './modules/institutions/institutions.module';
+import { TransactionMailImportModule } from './modules/transaction-mail-import/transaction-mail-import.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { InstitutionsModule } from './modules/institutions/institutions.module';
     AccountsModule,
     GmailReaderModule,
     InstitutionsModule,
+    TransactionMailImportModule,
   ],
   controllers: [AppController],
   providers: [AppService],
