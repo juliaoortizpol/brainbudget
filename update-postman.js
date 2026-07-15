@@ -507,15 +507,15 @@ const institutionsFolder = {
           mode: 'raw',
           raw: JSON.stringify(
             {
-              name: 'Banreservas',
-              slug: 'banreservas',
-              aliases: ['Banco de Reservas'],
+              name: 'Qik',
+              slug: 'qik',
+              aliases: ['Qik Banco Digital'],
               supportedAccountTypes: ['credit_card'],
               emailRules: [
                 {
-                  senderAddresses: ['notificaciones@banreservas.com'],
-                  subjectKeywords: ['Notificación de Consumo', 'Consumo'],
-                  parserKey: 'banreservas.credit-card',
+                  senderAddresses: ['notificaciones@qik.do'],
+                  subjectKeywords: ['Usaste tu tarjeta de crédito Qik'],
+                  parserKey: 'qik.credit-card',
                   parserVersion: 1,
                   accountType: 'credit_card',
                   enabled: true,
@@ -643,10 +643,10 @@ const accountsFolder = {
           mode: 'raw',
           raw: JSON.stringify(
             {
-              name: 'My Banreservas Card',
+              name: 'My Qik Credit Card',
               institutionId: '{{institution_id}}',
               type: 'credit_card',
-              last4Digits: '4134',
+              last4Digits: '6747',
               status: 'active',
             },
             null,

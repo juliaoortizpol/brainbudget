@@ -721,7 +721,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Banreservas\",\n  \"slug\": \"banreservas\",\n  \"aliases\": [\n    \"Banco de Reservas\"\n  ],\n  \"supportedAccountTypes\": [\n    \"credit_card\"\n  ],\n  \"emailRules\": [\n    {\n      \"senderAddresses\": [\n        \"notificaciones@banreservas.com\"\n      ],\n      \"subjectKeywords\": [\n        \"Notificación de Consumo\",\n        \"Consumo\"\n      ],\n      \"parserKey\": \"banreservas.credit-card\",\n      \"parserVersion\": 1,\n      \"accountType\": \"credit_card\",\n      \"enabled\": true\n    }\n  ],\n  \"enabled\": true\n}"
+              "raw": "{\n  \"name\": \"Qik\",\n  \"slug\": \"qik\",\n  \"aliases\": [\n    \"Qik Banco Digital\"\n  ],\n  \"supportedAccountTypes\": [\n    \"credit_card\"\n  ],\n  \"emailRules\": [\n    {\n      \"senderAddresses\": [\n        \"notificaciones@qik.do\"\n      ],\n      \"subjectKeywords\": [\n        \"Usaste tu tarjeta de crédito Qik\"\n      ],\n      \"parserKey\": \"qik.credit-card\",\n      \"parserVersion\": 1,\n      \"accountType\": \"credit_card\",\n      \"enabled\": true\n    }\n  ],\n  \"enabled\": true\n}"
             },
             "url": {
               "raw": "{{base_url}}/admin/institutions",
@@ -840,7 +840,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"My Banreservas Card\",\n  \"institutionId\": \"{{institution_id}}\",\n  \"type\": \"credit_card\",\n  \"last4Digits\": \"4134\",\n  \"status\": \"active\"\n}"
+              "raw": "{\n  \"name\": \"My Qik Credit Card\",\n  \"institutionId\": \"{{institution_id}}\",\n  \"type\": \"credit_card\",\n  \"last4Digits\": \"6747\",\n  \"status\": \"active\"\n}"
             },
             "url": {
               "raw": "{{base_url}}/accounts",
