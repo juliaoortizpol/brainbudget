@@ -3,10 +3,20 @@ import { AccountMailQueryBuilder } from './account-mail-query.builder';
 import { AccountMailContextService } from './account-mail-context.service';
 import { AccountsModule } from '@/modules/accounts/accounts.module';
 import { InstitutionsModule } from '@/modules/institutions/institutions.module';
+import { GmailReaderModule } from '@/modules/gmail-reader/gmail-reader.module';
+import { AccountMailFetcherService } from './account-mail-fetcher.service';
 
 @Module({
-  imports: [AccountsModule, InstitutionsModule],
-  providers: [AccountMailQueryBuilder, AccountMailContextService],
-  exports: [AccountMailQueryBuilder, AccountMailContextService],
+  imports: [AccountsModule, InstitutionsModule, GmailReaderModule],
+  providers: [
+    AccountMailQueryBuilder,
+    AccountMailContextService,
+    AccountMailFetcherService,
+  ],
+  exports: [
+    AccountMailQueryBuilder,
+    AccountMailContextService,
+    AccountMailFetcherService,
+  ],
 })
 export class TransactionMailImportModule {}
