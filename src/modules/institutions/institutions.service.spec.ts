@@ -60,4 +60,19 @@ describe('InstitutionsService', () => {
       }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
+
+  it('excludes internal email rules from the frontend catalog', async () => {
+    const exec = jest.fn().mockResolvedValue([{ name: 'Banreservas' }]);
+    const sort = jest.fn().mockReturnValue({ exec });
+    const select = jest.fn().mockReturnValue({ sort });
+    const institutionModel = {
+      find: jest.fn().mockReturnValue({ select }),
+    };
+    const service = new InstitutionsService(institutionModel as any);
+
+    await service.findAvailable();
+
+    expect(institutionModel.find).toHaveBeenCalledWith({ enabled: true });
+    expect(select).toHaveBeenCalledWith('-emailRules');
+  });
 });

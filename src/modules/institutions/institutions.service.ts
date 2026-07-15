@@ -32,6 +32,7 @@ export class InstitutionsService {
   findAvailable(): Promise<Institution[]> {
     return this.institutionModel
       .find({ enabled: true })
+      .select('-emailRules')
       .sort({ name: 1 })
       .exec();
   }
@@ -52,6 +53,7 @@ export class InstitutionsService {
     this.assertValidId(id);
     const institution = await this.institutionModel
       .findOne({ _id: new Types.ObjectId(id), enabled: true })
+      .select('-emailRules')
       .exec();
     if (!institution) {
       throw new NotFoundException(`Institution #${id} not found`);

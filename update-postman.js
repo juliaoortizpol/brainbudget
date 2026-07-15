@@ -479,6 +479,8 @@ const institutionsFolder = {
           host: ['{{base_url}}'],
           path: ['institutions'],
         },
+        description:
+          'Frontend catalog endpoint. Returns enabled institutions without internal emailRules.',
       },
     },
     {
