@@ -1,43 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import { AccountMailContextService } from './account-mail-context.service';
-import { AccountMailQueryBuilder } from './account-mail-query.builder';
-import { AccountMailFetcherService } from './account-mail-fetcher.service';
-import { InstitutionMailParsingService } from './parsers/institution-mail-parsing.service';
-import { PreviewTransactionMailImportDto } from './dto/preview-transaction-mail-import.dto';
-import { TransactionMailAccountMatcher } from './transaction-mail-account.matcher';
+import { TransactionMailImportOptionsDto } from './dto/transaction-mail-import-options.dto';
+import { TransactionMailImportPipelineService } from './transaction-mail-import-pipeline.service';
 
 @Injectable()
 export class TransactionMailImportPreviewService {
   constructor(
-    private readonly contextService: AccountMailContextService,
-    private readonly queryBuilder: AccountMailQueryBuilder,
-    private readonly fetcher: AccountMailFetcherService,
-    private readonly parsingService: InstitutionMailParsingService,
-    private readonly accountMatcher: TransactionMailAccountMatcher,
+    private readonly pipeline: TransactionMailImportPipelineService,
   ) {}
 
-  async preview(userId: string, options: PreviewTransactionMailImportDto) {
-    const context = await this.contextService.getContextForUser(userId);
-    const mailQuery = this.queryBuilder.buildMailQueryForUserAccounts(context, {
-      newerThanDays: options.newerThanDays,
-    });
-    const fetched = await this.fetcher.getMailsBasedOnAccountsQuery(
-      userId,
-      mailQuery,
-      {
-        maxPages: options.maxPages,
-        pageSize: options.pageSize,
-        includeBody: true,
-      },
-    );
-    const parsing = await this.parsingService.parseMails(
-      fetched.messages,
-      context.rules,
-    );
-    const matching = this.accountMatcher.match(
-      parsing.transactions,
-      context.supportedAccounts,
-    );
+  async preview(userId: string, options: TransactionMailImportOptionsDto) {
+    const { context, mailQuery, fetched, parsing, matching } =
+      await this.pipeline.run(userId, options);
 
     return {
       mode: 'preview',

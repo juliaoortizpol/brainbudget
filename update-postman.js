@@ -758,7 +758,7 @@ if (!collection.variable.some((variable) => variable.key === 'account_id')) {
 const transactionMailImportFolder = {
   name: 'Transaction Mail Import',
   description:
-    'Admin-only tools for testing the account-to-Gmail-to-parser pipeline. Preview does not save transactions.',
+    'Preview the mail pipeline as an admin, or run the authenticated user synchronization that saves matched transactions.',
   item: [
     {
       name: 'Preview Mail Import (Admin)',
@@ -787,6 +787,35 @@ const transactionMailImportFolder = {
         },
         description:
           'Uses the authenticated admin user accounts and Gmail connection. Builds the Gmail query, reads messages, parses supported transactions, and matches them to accounts without persisting them. Review matching.transactions and matching.issues in the response.',
+      },
+    },
+    {
+      name: 'Sync Transactions From Mail',
+      request: {
+        method: 'POST',
+        header: [
+          { key: 'Content-Type', value: 'application/json' },
+          { key: 'Authorization', value: 'Bearer {{jwt_token}}' },
+        ],
+        body: {
+          mode: 'raw',
+          raw: JSON.stringify(
+            {
+              newerThanDays: 30,
+              maxPages: 5,
+              pageSize: 50,
+            },
+            null,
+            2,
+          ),
+        },
+        url: {
+          raw: '{{base_url}}/transaction-mail-import/sync',
+          host: ['{{base_url}}'],
+          path: ['transaction-mail-import', 'sync'],
+        },
+        description:
+          'Runs the pipeline for the authenticated user and persists safely matched transactions. Repeating the request skips previously imported Gmail messages.',
       },
     },
   ],

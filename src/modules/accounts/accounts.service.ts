@@ -98,6 +98,30 @@ export class AccountsService {
     return account;
   }
 
+  async markSynced(
+    userId: string,
+    accountIds: string[],
+    syncedAt: Date = new Date(),
+  ): Promise<number> {
+    const uniqueAccountIds = [...new Set(accountIds)];
+    if (uniqueAccountIds.length === 0) return 0;
+
+    const result = await this.accountModel
+      .updateMany(
+        {
+          _id: {
+            $in: uniqueAccountIds.map((id) => new Types.ObjectId(id)),
+          },
+          userId: new Types.ObjectId(userId),
+          isDeleted: { $ne: true },
+        },
+        { $set: { lastSynced: syncedAt } },
+      )
+      .exec();
+
+    return result.modifiedCount;
+  }
+
   private async resolveInstitutionForCreate(dto: CreateAccountDto) {
     if (dto.institutionId) {
       const institution = await this.institutionsService.findAvailableOne(

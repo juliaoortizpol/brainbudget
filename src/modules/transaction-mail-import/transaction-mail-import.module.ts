@@ -12,6 +12,9 @@ import { AdminGuard } from '@/common/guards/admin.guard';
 import { TransactionMailAccountMatcher } from './transaction-mail-account.matcher';
 import { TransactionsModule } from '@/modules/transactions/transactions.module';
 import { TransactionMailPersistenceService } from './transaction-mail-persistence.service';
+import { TransactionMailImportPipelineService } from './transaction-mail-import-pipeline.service';
+import { TransactionMailImportSyncService } from './transaction-mail-import-sync.service';
+import { TransactionMailImportController } from './transaction-mail-import.controller';
 
 @Module({
   imports: [
@@ -27,6 +30,8 @@ import { TransactionMailPersistenceService } from './transaction-mail-persistenc
     AccountMailFetcherService,
     TransactionMailAccountMatcher,
     TransactionMailPersistenceService,
+    TransactionMailImportPipelineService,
+    TransactionMailImportSyncService,
     TransactionMailImportPreviewService,
     AdminGuard,
   ],
@@ -37,6 +42,9 @@ import { TransactionMailPersistenceService } from './transaction-mail-persistenc
     TransactionMailAccountMatcher,
     TransactionMailPersistenceService,
   ],
-  controllers: [TransactionMailImportAdminController],
+  controllers: [
+    TransactionMailImportAdminController,
+    TransactionMailImportController,
+  ],
 })
 export class TransactionMailImportModule {}

@@ -1,6 +1,6 @@
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
-export class PreviewTransactionMailImportDto {
+export class TransactionMailImportOptionsDto {
   @IsOptional()
   @IsInt()
   @Min(1)

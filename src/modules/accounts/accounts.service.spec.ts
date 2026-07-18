@@ -79,4 +79,36 @@ describe('AccountsService institution selection', () => {
       { new: true },
     );
   });
+
+  it('marks only the user owned account ids as synced', async () => {
+    const exec = jest.fn().mockResolvedValue({ modifiedCount: 2 });
+    const accountModel = {
+      updateMany: jest.fn().mockReturnValue({ exec }),
+    };
+    const service = new AccountsService(
+      accountModel as any,
+      {} as InstitutionsService,
+    );
+    const syncedAt = new Date('2026-07-15T12:00:00.000Z');
+
+    await expect(
+      service.markSynced(
+        userId,
+        [
+          '507f1f77bcf86cd799439012',
+          '507f1f77bcf86cd799439013',
+          '507f1f77bcf86cd799439012',
+        ],
+        syncedAt,
+      ),
+    ).resolves.toBe(2);
+    expect(accountModel.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _id: { $in: [expect.anything(), expect.anything()] },
+        userId: expect.anything(),
+        isDeleted: { $ne: true },
+      }),
+      { $set: { lastSynced: syncedAt } },
+    );
+  });
 });
