@@ -272,6 +272,7 @@ export class BudgetsService {
       {
         $match: {
           userId: budget.userId,
+          type: 'expense',
           budgetItemId: { $in: budgetItems.map((item) => item._id) },
           date: {
             $gte: budget.startDate,
@@ -282,7 +283,7 @@ export class BudgetsService {
       {
         $group: {
           _id: '$budgetItemId',
-          totalSpent: { $sum: '$amount' },
+          totalSpent: { $sum: { $abs: '$amount' } },
         },
       },
     ]);

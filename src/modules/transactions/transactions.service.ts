@@ -77,9 +77,19 @@ export class TransactionsService {
   }
 
   async update(id: string, userId: string, updateTransactionDto: UpdateTransactionDto): Promise<Transaction> {
+    const updateData: Record<string, unknown> = { ...updateTransactionDto };
+    if (updateTransactionDto.budgetItemId) {
+      updateData.budgetItemId = new Types.ObjectId(
+        updateTransactionDto.budgetItemId,
+      );
+    }
+    if (updateTransactionDto.accountId) {
+      updateData.accountId = new Types.ObjectId(updateTransactionDto.accountId);
+    }
+
     const existingTransaction = await this.transactionModel.findOneAndUpdate(
       { _id: new Types.ObjectId(id), userId: new Types.ObjectId(userId) },
-      { $set: updateTransactionDto },
+      { $set: updateData },
       { new: true, runValidators: true }
     ).exec();
 
