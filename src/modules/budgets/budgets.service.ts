@@ -273,7 +273,7 @@ export class BudgetsService {
         $match: {
           userId: budget.userId,
           type: 'expense',
-          budgetItemId: { $in: budgetItems.map((item) => item._id) },
+          budgetItemId: { $exists: true },
           date: {
             $gte: budget.startDate,
             $lte: endDateLimit,
@@ -281,8 +281,27 @@ export class BudgetsService {
         },
       },
       {
+        $addFields: {
+          normalizedBudgetItemId: {
+            $convert: {
+              input: '$budgetItemId',
+              to: 'objectId',
+              onError: null,
+              onNull: null,
+            },
+          },
+        },
+      },
+      {
+        $match: {
+          normalizedBudgetItemId: {
+            $in: budgetItems.map((item) => item._id),
+          },
+        },
+      },
+      {
         $group: {
-          _id: '$budgetItemId',
+          _id: '$normalizedBudgetItemId',
           totalSpent: { $sum: { $abs: '$amount' } },
         },
       },
@@ -295,7 +314,11 @@ export class BudgetsService {
 
     return budgetItems.map((item) => ({
       ...item.toObject(),
-      spent: spentMap.get(item._id.toString()) || 0,
+      spent: this.roundCurrency(spentMap.get(item._id.toString()) || 0),
     }));
+  }
+
+  private roundCurrency(value: number): number {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
   }
 }
