@@ -7,11 +7,16 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   const frontendUrl = process.env.FRONTEND_URL?.replace(/\/+$/, '') || 'http://localhost:5173';
+  const isDeployedEnvironment = ['beta', 'production'].includes(
+    process.env.APP_ENV || 'development',
+  );
 
   if (process.env.NODE_ENV === 'production') {
     app.getHttpAdapter().getInstance().set('trust proxy', 1);
   }
-  app.use(helmet());
+  if (isDeployedEnvironment) {
+    app.use(helmet());
+  }
 
   app.enableCors({
     origin: frontendUrl,

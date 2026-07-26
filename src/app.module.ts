@@ -22,12 +22,25 @@ import { validateEnvironment } from './config/validate-environment';
       isGlobal: true,
       validate: validateEnvironment,
     }),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60_000,
-        limit: 120,
+    ThrottlerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => {
+        const appEnvironment =
+          configService.get<string>('APP_ENV') || 'development';
+        const enableThrottling = ['beta', 'production'].includes(
+          appEnvironment,
+        );
+
+        return [
+          {
+            ttl: 60_000,
+            limit: 120,
+            skipIf: () => !enableThrottling,
+          },
+        ];
       },
-    ]),
+    }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
