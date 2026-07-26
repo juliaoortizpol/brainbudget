@@ -5,8 +5,10 @@ import {
   Get,
   Param,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { GmailReaderService } from './gmail-reader.service';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
@@ -23,14 +25,17 @@ export class GmailReaderController {
   }
 
   @Get('oauth/callback')
-  connectFromCallback(
+  async connectFromCallback(
     @Query('code') code: string,
     @Query('state') state: string,
+    @Res() res: Response,
   ) {
     if (!code || !state) {
       throw new BadRequestException('Missing OAuth code or state');
     }
-    return this.gmailReader.connectFromCallback(code, state);
+    await this.gmailReader.connectFromCallback(code, state);
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    return res.redirect(`${frontendUrl}/accounts?gmail=connected`);
   }
 
   @UseGuards(JwtAuthGuard)

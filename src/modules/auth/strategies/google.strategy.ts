@@ -3,12 +3,14 @@ import { Strategy, VerifyCallback } from 'passport-google-oauth20';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '@/modules/users/users.service';
+import { BetaAccessService } from '../beta-access.service';
 
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(
     private configService: ConfigService,
     private usersService: UsersService,
+    private betaAccess: BetaAccessService,
   ) {
     super({
       clientID: configService.get<string>('GOOGLE_CLIENT_ID') || '',
@@ -27,6 +29,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     const { id, emails } = profile;
     const email = emails[0].value;
 
+    this.betaAccess.assertAllowed(email);
     const user = await this.usersService.findOrCreateGoogleUser(email, id);
     done(null, user);
   }

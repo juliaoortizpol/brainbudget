@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '@/modules/users/users.service';
 import { RegisterDto } from './dto/auth.dto';
 import * as bcrypt from 'bcrypt';
+import { BetaAccessService } from './beta-access.service';
 
 @Injectable()
 export class AuthService {
@@ -11,9 +12,11 @@ export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
+    private betaAccess: BetaAccessService,
   ) {}
 
   async validateLocalUser(email: string, pass: string): Promise<any> {
+    this.betaAccess.assertAllowed(email);
     const user = await this.usersService.findByEmail(email);
     if (
       user &&
@@ -38,6 +41,7 @@ export class AuthService {
   }
 
   async register(registerDto: RegisterDto) {
+    this.betaAccess.assertAllowed(registerDto.email);
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
     const user = await this.usersService.create({
       email: registerDto.email,
