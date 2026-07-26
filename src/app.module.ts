@@ -11,6 +11,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
 import { GmailReaderModule } from './modules/gmail-reader/gmail-reader.module';
 import { InstitutionsModule } from './modules/institutions/institutions.module';
 import { TransactionMailImportModule } from './modules/transaction-mail-import/transaction-mail-import.module';
+import { HealthController } from './modules/health/health.controller';
 
 @Module({
   imports: [
@@ -33,7 +34,7 @@ import { TransactionMailImportModule } from './modules/transaction-mail-import/t
     InstitutionsModule,
     TransactionMailImportModule,
   ],
-  controllers: [AppController],
+  controllers: [AppController, HealthController],
   providers: [AppService],
 })
 export class AppModule {}
