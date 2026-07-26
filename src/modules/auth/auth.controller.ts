@@ -15,23 +15,27 @@ import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 
 import { GoogleOauthGuard } from '@/common/guards/google-oauth.guard';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('signup')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
   }
 
   @UseGuards(LocalAuthGuard)
   @Post('login')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   async login(@Request() req: any) {
     return this.authService.login(req.user);
   }
 
   @Get('google')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @UseGuards(GoogleOauthGuard)
   async googleAuth() {
     // Guard redirects

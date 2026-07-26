@@ -13,6 +13,7 @@ import { GmailReaderService } from './gmail-reader.service';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { ListGmailMessagesDto } from './dto/list-gmail-messages.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('gmail-reader')
 export class GmailReaderController {
@@ -20,6 +21,7 @@ export class GmailReaderController {
 
   @UseGuards(JwtAuthGuard)
   @Get('auth-url')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   getAuthorizationUrl(@CurrentUser() user: { userId: string }) {
     return { url: this.gmailReader.getAuthorizationUrl(user.userId) };
   }

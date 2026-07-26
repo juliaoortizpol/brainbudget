@@ -12,12 +12,22 @@ import { GmailReaderModule } from './modules/gmail-reader/gmail-reader.module';
 import { InstitutionsModule } from './modules/institutions/institutions.module';
 import { TransactionMailImportModule } from './modules/transaction-mail-import/transaction-mail-import.module';
 import { HealthController } from './modules/health/health.controller';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { validateEnvironment } from './config/validate-environment';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      validate: validateEnvironment,
     }),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60_000,
+        limit: 120,
+      },
+    ]),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -35,6 +45,12 @@ import { HealthController } from './modules/health/health.controller';
     TransactionMailImportModule,
   ],
   controllers: [AppController, HealthController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}
