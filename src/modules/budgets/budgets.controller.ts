@@ -12,6 +12,7 @@ import {
 import { BudgetsService } from './budgets.service';
 import { CreateBudgetDto, CreateBudgetItemDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
+import { UpdateBudgetItemDto } from './dto/update-budget-item.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -75,7 +76,7 @@ export class BudgetsController {
     @Request() req,
     @Param('id') id: string,
     @Param('itemId') itemId: string,
-    @Body() updateDto: any,
+    @Body() updateDto: UpdateBudgetItemDto,
   ) {
     return this.budgetsService.updateBudgetItem(
       id,
