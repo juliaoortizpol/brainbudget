@@ -45,6 +45,25 @@ export class Transaction {
 
   @Prop({
     required: true,
+    enum: ['matched', 'needs_review', 'manual'],
+    default: 'needs_review',
+  })
+  matchingStatus!: 'matched' | 'needs_review' | 'manual';
+
+  @Prop({ enum: ['rule', 'suggestion', 'manual'] })
+  matchingSource?: 'rule' | 'suggestion' | 'manual';
+
+  @Prop()
+  matchingConfidence?: number;
+
+  @Prop()
+  rawDescription?: string;
+
+  @Prop()
+  normalizedMerchant?: string;
+
+  @Prop({
+    required: true,
     enum: Object.values(TransactionSource),
     default: TransactionSource.MANUAL,
   })

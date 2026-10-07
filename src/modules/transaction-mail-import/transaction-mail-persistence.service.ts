@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { MerchantNormalizationService } from '@/modules/transactions/merchant-normalization.service';
 import {
   Transaction,
   TransactionDocument,
@@ -17,6 +18,7 @@ export class TransactionMailPersistenceService {
   constructor(
     @InjectModel(Transaction.name)
     private readonly transactionModel: Model<TransactionDocument>,
+    private readonly merchantNormalization: MerchantNormalizationService,
   ) {}
 
   async save(
@@ -46,6 +48,10 @@ export class TransactionMailPersistenceService {
                 userId: new Types.ObjectId(userId),
                 accountId: new Types.ObjectId(envelope.accountId),
                 name: transaction.description,
+                rawDescription: transaction.description,
+                normalizedMerchant: this.merchantNormalization.normalize(
+                  transaction.description,
+                ),
                 amount: transaction.amount,
                 type: transaction.type,
                 currency: transaction.currency,

@@ -1,3 +1,4 @@
+import { MerchantNormalizationService } from '@/modules/transactions/merchant-normalization.service';
 import { TransactionSource } from '@/modules/transactions/schemas/transaction.schema';
 import { MatchedMailTransactionEnvelope } from './contracts';
 import { TransactionMailPersistenceService } from './transaction-mail-persistence.service';
@@ -28,6 +29,7 @@ describe('TransactionMailPersistenceService', () => {
     };
     const service = new TransactionMailPersistenceService(
       transactionModel as any,
+      new MerchantNormalizationService(),
     );
 
     const result = await service.save(userId, [envelope]);
@@ -51,6 +53,8 @@ describe('TransactionMailPersistenceService', () => {
           sourceMessageId: envelope.messageId,
           parserKey: 'qik.credit-card',
           parserVersion: 1,
+          rawDescription: 'APPLE.COM/BILL',
+          normalizedMerchant: 'apple bill',
         }),
       },
       { upsert: true, runValidators: true },
@@ -65,6 +69,7 @@ describe('TransactionMailPersistenceService', () => {
     };
     const service = new TransactionMailPersistenceService(
       transactionModel as any,
+      new MerchantNormalizationService(),
     );
 
     const result = await service.save(userId, [envelope]);
@@ -81,6 +86,7 @@ describe('TransactionMailPersistenceService', () => {
     };
     const service = new TransactionMailPersistenceService(
       transactionModel as any,
+      new MerchantNormalizationService(),
     );
 
     const result = await service.save(userId, [envelope]);
@@ -97,6 +103,7 @@ describe('TransactionMailPersistenceService', () => {
     };
     const service = new TransactionMailPersistenceService(
       transactionModel as any,
+      new MerchantNormalizationService(),
     );
 
     const result = await service.save(userId, [envelope]);
