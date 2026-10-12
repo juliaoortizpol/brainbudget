@@ -50,24 +50,47 @@ export class BudgetMatchingService {
     );
     transaction.normalizedMerchant = merchant;
 
-    const matches = items.filter(
+    const eligibleItems = items.filter(
       (item) =>
         item.userId.toString() === transaction.userId.toString() &&
         budgetIds.has(item.budgetId.toString()) &&
         !item.isDeleted &&
-        item.type === transaction.type &&
-        item.matchingRules?.some((rule) => {
-          const value = this.normalization.normalize(rule.value);
-          const actual = rule.field === 'merchant' ? merchant : description;
-          if (!value || !actual) return false;
-          return rule.operator === 'equals'
+        item.type === transaction.type,
+    );
+    type Rank = [exact: number, length: number, preferredSource: number];
+    const compare = (a: Rank, b: Rank): number =>
+      a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+    let bestRank: Rank | undefined;
+    const winners = new Map<string, Types.ObjectId>();
+
+    for (const item of eligibleItems) {
+      for (const rule of item.matchingRules ?? []) {
+        const value = this.normalization.normalize(rule.value);
+        const actual = rule.field === 'merchant' ? merchant : description;
+        if (!value || !actual) continue;
+        const matches =
+          rule.operator === 'equals'
             ? actual === value
             : rule.operator === 'contains' && actual.includes(value);
-        }),
-    );
+        if (!matches) continue;
+        const rank: Rank = [
+          Number(actual === value),
+          value.length,
+          Number(rule.source === 'user' || rule.source === 'learned'),
+        ];
+        const comparison = bestRank ? compare(rank, bestRank) : 1;
+        if (comparison > 0) {
+          bestRank = rank;
+          winners.clear();
+        }
+        if (comparison >= 0) {
+          winners.set(item._id.toString(), item._id as Types.ObjectId);
+        }
+      }
+    }
 
-    if (matches.length === 1) {
-      transaction.budgetItemId = matches[0]._id as Types.ObjectId;
+    if (winners.size === 1) {
+      transaction.budgetItemId = winners.values().next().value;
       transaction.matchingStatus = 'matched';
       transaction.matchingSource = 'rule';
     } else {

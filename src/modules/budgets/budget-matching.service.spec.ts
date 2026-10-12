@@ -109,6 +109,106 @@ describe('BudgetMatchingService', () => {
     expect(await match(manual, [])).toEqual(manual);
   });
 
+  const candidate = (
+    value: string,
+    operator = 'contains',
+    source = 'user',
+    field = 'merchant',
+  ) => ({
+    ...item,
+    _id: new Types.ObjectId(),
+    matchingRules: [{ id: 'rule', value, operator, source, field }],
+  });
+
+  it.each([false, true])(
+    'prefers uber eats over uber regardless of item order (%s)',
+    (reverse) => {
+      const transportation = candidate('uber');
+      const eatingOut = candidate(' UBER   EATS! ');
+      const items = [transportation, eatingOut];
+      if (reverse) items.reverse();
+      expect(
+        match({ ...transaction(), name: 'UBER EATS' }, items),
+      ).toMatchObject({
+        budgetItemId: eatingOut._id,
+        matchingStatus: 'matched',
+        matchingSource: 'rule',
+      });
+    },
+  );
+
+  it('prefers exact equality over a longer partial match on another field', () => {
+    const exact = candidate('uber', 'equals', 'suggested');
+    const partial = candidate('monthly payment', 'contains', 'user', 'description');
+    expect(
+      match(
+        {
+          ...transaction(),
+          normalizedMerchant: 'uber',
+          rawDescription: 'monthly payment receipt',
+        },
+        [partial, exact],
+      ),
+    ).toMatchObject({ budgetItemId: exact._id });
+  });
+
+  it('prefers a longer partial match before rule source', () => {
+    const shorter = candidate('uber', 'contains', 'user');
+    const longer = candidate('uber eats', 'contains', 'suggested');
+    expect(
+      match({ ...transaction(), name: 'UBER EATS ORDER' }, [shorter, longer]),
+    ).toMatchObject({ budgetItemId: longer._id });
+  });
+
+  it.each(['user', 'learned'])(
+    'prefers %s rules over equally specific suggestions',
+    (source) => {
+      const suggested = candidate('uber eats', 'equals', 'suggested');
+      const preferred = candidate('uber eats', 'equals', source);
+      expect(
+        match({ ...transaction(), name: 'UBER EATS' }, [suggested, preferred]),
+      ).toMatchObject({ budgetItemId: preferred._id });
+    },
+  );
+
+  it('leaves equally specific user and learned rules for review and clears old metadata', () => {
+    expect(
+      match(
+        {
+          ...transaction(),
+          name: 'UBER EATS',
+          budgetItemId: item._id,
+          matchingStatus: 'matched',
+          matchingSource: 'rule',
+          matchingConfidence: 0.9,
+        },
+        [
+          candidate('uber eats', 'equals', 'user'),
+          candidate('uber eats', 'equals', 'learned'),
+        ],
+      ),
+    ).toMatchObject({
+      matchingStatus: 'needs_review',
+      budgetItemId: undefined,
+      matchingSource: undefined,
+      matchingConfidence: undefined,
+    });
+  });
+
+  it('treats multiple equally ranked rules on the same item as one winner', () => {
+    const winner = candidate('uber eats');
+    winner.matchingRules.push({
+      ...winner.matchingRules[0],
+      id: 'second-rule',
+    });
+    expect(
+      match({ ...transaction(), name: 'UBER EATS' }, [
+        candidate('uber'),
+        winner,
+      ]),
+    ).toMatchObject({ budgetItemId: winner._id, matchingStatus: 'matched' });
+  });
+
   it.each([
     { status: 'closed' },
     { isDeleted: true },
