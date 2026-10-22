@@ -40,7 +40,7 @@ describe('Budget item rename', () => {
     expect(itemModel.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: itemId, budgetId, userId, isDeleted: false },
       { $set: { name: 'Transportation' } },
-      { new: true },
+      { new: true, runValidators: true },
     );
   });
 
