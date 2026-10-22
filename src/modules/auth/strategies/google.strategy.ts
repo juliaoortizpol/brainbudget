@@ -1,6 +1,6 @@
 import { PassportStrategy } from '@nestjs/passport';
-import { Strategy, VerifyCallback } from 'passport-google-oauth20';
-import { Injectable } from '@nestjs/common';
+import { Strategy, VerifyCallback, Profile } from 'passport-google-oauth20';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UsersService } from '@/modules/users/users.service';
 import { BetaAccessService } from '../beta-access.service';
@@ -23,11 +23,13 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   async validate(
     accessToken: string,
     refreshToken: string,
-    profile: any,
+    profile: Profile,
     done: VerifyCallback,
-  ): Promise<any> {
+  ): Promise<void> {
     const { id, emails } = profile;
-    const email = emails[0].value;
+    const email = emails?.[0]?.value;
+    if (!email)
+      throw new UnauthorizedException('Google did not return an email address');
 
     this.betaAccess.assertAllowed(email);
     const user = await this.usersService.findOrCreateGoogleUser(email, id);

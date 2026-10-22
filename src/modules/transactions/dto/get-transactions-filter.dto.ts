@@ -1,4 +1,11 @@
-import { IsOptional, IsMongoId, IsDateString, IsEnum, IsNumber, Min } from 'class-validator';
+import {
+  IsOptional,
+  IsMongoId,
+  IsDateString,
+  IsEnum,
+  IsNumber,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class GetTransactionsFilterDto {

@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '@/common/types/authenticated-request';
 import {
   Controller,
   Get,
@@ -20,23 +21,26 @@ export class AccountsController {
   constructor(private readonly accountsService: AccountsService) {}
 
   @Post()
-  create(@Request() req, @Body() createAccountDto: CreateAccountDto) {
+  create(
+    @Request() req: AuthenticatedRequest,
+    @Body() createAccountDto: CreateAccountDto,
+  ) {
     return this.accountsService.create(req.user.userId, createAccountDto);
   }
 
   @Get()
-  findAll(@Request() req) {
+  findAll(@Request() req: AuthenticatedRequest) {
     return this.accountsService.findAll(req.user.userId);
   }
 
   @Get(':id')
-  findOne(@Request() req, @Param('id') id: string) {
+  findOne(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.accountsService.findOne(id, req.user.userId);
   }
 
   @Patch(':id')
   update(
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() updateAccountDto: UpdateAccountDto,
   ) {
@@ -44,7 +48,7 @@ export class AccountsController {
   }
 
   @Delete(':id')
-  remove(@Request() req, @Param('id') id: string) {
+  remove(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.accountsService.softDelete(id, req.user.userId);
   }
 }

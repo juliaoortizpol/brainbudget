@@ -91,11 +91,11 @@ describe('AccountMailContextService', () => {
     ]);
     expect(result.unsupportedAccounts).toEqual([
       expect.objectContaining({
-        account: expect.objectContaining({ accountId: 'account-3' }),
+        account: expect.objectContaining({ accountId: 'account-3' }) as unknown,
         reason: UnsupportedMailAccountReason.CUSTOM_INSTITUTION,
       }),
       expect.objectContaining({
-        account: expect.objectContaining({ accountId: 'account-4' }),
+        account: expect.objectContaining({ accountId: 'account-4' }) as unknown,
         reason: UnsupportedMailAccountReason.ACCOUNT_NOT_ACTIVE,
       }),
     ]);

@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '@/common/types/authenticated-request';
 import {
   Controller,
   Get,
@@ -21,23 +22,26 @@ export class BudgetsController {
   constructor(private readonly budgetsService: BudgetsService) {}
 
   @Post()
-  create(@Request() req, @Body() createBudgetDto: CreateBudgetDto) {
+  create(
+    @Request() req: AuthenticatedRequest,
+    @Body() createBudgetDto: CreateBudgetDto,
+  ) {
     return this.budgetsService.create(req.user.userId, createBudgetDto);
   }
 
   @Get()
-  findAll(@Request() req) {
+  findAll(@Request() req: AuthenticatedRequest) {
     return this.budgetsService.findAll(req.user.userId);
   }
 
   @Get(':id')
-  findOne(@Request() req, @Param('id') id: string) {
+  findOne(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.budgetsService.findOne(id, req.user.userId);
   }
 
   @Patch(':id')
   update(
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() updateBudgetDto: UpdateBudgetDto,
   ) {
@@ -45,13 +49,13 @@ export class BudgetsController {
   }
 
   @Delete(':id')
-  remove(@Request() req, @Param('id') id: string) {
+  remove(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.budgetsService.softDelete(id, req.user.userId);
   }
 
   @Post(':id/items')
   addItem(
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() createItemDto: CreateBudgetItemDto,
   ) {
@@ -60,7 +64,7 @@ export class BudgetsController {
 
   @Delete(':id/items/:itemId')
   removeItem(
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Param('itemId') itemId: string,
   ) {
@@ -73,7 +77,7 @@ export class BudgetsController {
 
   @Patch(':id/items/:itemId')
   updateItem(
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Param('itemId') itemId: string,
     @Body() updateDto: UpdateBudgetItemDto,

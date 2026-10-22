@@ -4,11 +4,17 @@ import { InstitutionsService } from './institutions.service';
 describe('InstitutionsService', () => {
   it('normalizes routing data when creating an institution', async () => {
     const save = jest.fn().mockResolvedValue({ slug: 'banreservas' });
-    const institutionModel = jest.fn().mockImplementation((value) => ({
-      ...value,
-      save,
-    }));
-    const service = new InstitutionsService(institutionModel as any);
+    const institutionModel = jest
+      .fn()
+      .mockImplementation((value: Record<string, unknown>) => ({
+        ...value,
+        save,
+      }));
+    const service = new InstitutionsService(
+      institutionModel as unknown as ConstructorParameters<
+        typeof InstitutionsService
+      >[0],
+    );
 
     await service.create({
       name: 'Banreservas',
@@ -47,7 +53,11 @@ describe('InstitutionsService', () => {
     const institutionModel = jest.fn().mockImplementation(() => ({
       save: jest.fn().mockRejectedValue({ code: 11000 }),
     }));
-    const service = new InstitutionsService(institutionModel as any);
+    const service = new InstitutionsService(
+      institutionModel as unknown as ConstructorParameters<
+        typeof InstitutionsService
+      >[0],
+    );
 
     await expect(
       service.create({
@@ -68,7 +78,11 @@ describe('InstitutionsService', () => {
     const institutionModel = {
       find: jest.fn().mockReturnValue({ select }),
     };
-    const service = new InstitutionsService(institutionModel as any);
+    const service = new InstitutionsService(
+      institutionModel as unknown as ConstructorParameters<
+        typeof InstitutionsService
+      >[0],
+    );
 
     await service.findAvailable();
 

@@ -19,7 +19,11 @@ describe('TransactionMailImportPreviewService', () => {
       },
     };
     const pipeline = { run: jest.fn().mockResolvedValue(run) };
-    const service = new TransactionMailImportPreviewService(pipeline as any);
+    const service = new TransactionMailImportPreviewService(
+      pipeline as unknown as ConstructorParameters<
+        typeof TransactionMailImportPreviewService
+      >[0],
+    );
     const options = { newerThanDays: 30, maxPages: 5, pageSize: 50 };
 
     const result = await service.preview('user-1', options);

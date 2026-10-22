@@ -21,6 +21,21 @@ import {
   GmailReaderException,
 } from './gmail-reader.errors';
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getErrorDetails(value: unknown) {
+  const error = isRecord(value) ? value : {};
+  const response = isRecord(error.response) ? error.response : {};
+  const data = isRecord(response.data) ? response.data : {};
+  return {
+    status: response.status ?? error.code,
+    providerCode: data.error,
+    message: error.message,
+  };
+}
+
 @Injectable()
 export class GmailReaderService {
   constructor(
@@ -68,9 +83,9 @@ export class GmailReaderService {
         { upsert: true },
       );
       return { connected: true, email };
-    } catch (error: any) {
+    } catch (error: unknown) {
       throw new BadGatewayException(
-        `Could not connect Gmail: ${error.message}`,
+        `Could not connect Gmail: ${String(getErrorDetails(error).message)}`,
       );
     }
   }
@@ -136,7 +151,7 @@ export class GmailReaderService {
         nextPageToken: page.data.nextPageToken || undefined,
         resultSizeEstimate: page.data.resultSizeEstimate || 0,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       return this.handleReadError(
         userId,
         error,
@@ -156,7 +171,7 @@ export class GmailReaderService {
       connection.lastReadAt = new Date();
       await connection.save();
       return mapGmailMessage(response.data, true);
-    } catch (error: any) {
+    } catch (error: unknown) {
       return this.handleReadError(
         userId,
         error,
@@ -228,7 +243,7 @@ export class GmailReaderService {
 
   private async handleReadError(
     userId: string,
-    error: any,
+    error: unknown,
     fallbackMessage: string,
   ): Promise<never> {
     if (this.isAuthorizationError(error)) {
@@ -260,10 +275,14 @@ export class GmailReaderService {
     );
   }
 
-  private isAuthorizationError(error: any): boolean {
-    const status = error?.response?.status ?? error?.code;
-    const providerCode = error?.response?.data?.error;
-    const message = String(error?.message || '').toLowerCase();
+  private isAuthorizationError(error: unknown): boolean {
+    const {
+      status,
+      providerCode,
+      message: errorMessage,
+    } = getErrorDetails(error);
+    const message =
+      typeof errorMessage === 'string' ? errorMessage.toLowerCase() : '';
     return (
       status === 401 ||
       providerCode === 'invalid_grant' ||
@@ -272,7 +291,7 @@ export class GmailReaderService {
     );
   }
 
-  private isNotFoundError(error: any): boolean {
-    return (error?.response?.status ?? error?.code) === 404;
+  private isNotFoundError(error: unknown): boolean {
+    return getErrorDetails(error).status === 404;
   }
 }
