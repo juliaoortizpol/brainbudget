@@ -4,6 +4,9 @@ import { BudgetsService } from './budgets.service';
 import { BudgetsController } from './budgets.controller';
 import { Budget, BudgetSchema } from './schemas/budget.schema';
 import { BudgetItem, BudgetItemSchema } from './schemas/budget-item.schema';
+import { BudgetMatchingService } from './budget-matching.service';
+import { BudgetMatchingContextService } from './budget-matching-context.service';
+import { TransactionsModule } from '@/modules/transactions/transactions.module';
 import {
   Transaction,
   TransactionSchema,
@@ -11,6 +14,7 @@ import {
 
 @Module({
   imports: [
+    TransactionsModule,
     MongooseModule.forFeature([
       { name: Budget.name, schema: BudgetSchema },
       { name: BudgetItem.name, schema: BudgetItemSchema },
@@ -18,7 +22,15 @@ import {
     ]),
   ],
   controllers: [BudgetsController],
-  providers: [BudgetsService],
-  exports: [BudgetsService],
+  providers: [
+    BudgetsService,
+    BudgetMatchingService,
+    BudgetMatchingContextService,
+  ],
+  exports: [
+    BudgetsService,
+    BudgetMatchingService,
+    BudgetMatchingContextService,
+  ],
 })
 export class BudgetsModule {}

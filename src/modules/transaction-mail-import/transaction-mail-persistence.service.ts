@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { BudgetMatchingService } from '@/modules/budgets/budget-matching.service';
+import { BudgetMatchingContextService } from '@/modules/budgets/budget-matching-context.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { MerchantNormalizationService } from '@/modules/transactions/merchant-normalization.service';
 import {
   Transaction,
   TransactionDocument,
@@ -17,6 +20,9 @@ export class TransactionMailPersistenceService {
   constructor(
     @InjectModel(Transaction.name)
     private readonly transactionModel: Model<TransactionDocument>,
+    private readonly merchantNormalization: MerchantNormalizationService,
+    private readonly budgetMatching: BudgetMatchingService,
+    private readonly matchingContext: BudgetMatchingContextService,
   ) {}
 
   async save(
@@ -31,9 +37,25 @@ export class TransactionMailPersistenceService {
       issues: [],
     };
 
+    if (!envelopes.length) return result;
+    const context = await this.matchingContext.load(userId);
+
     for (const envelope of envelopes) {
       try {
         const transaction = envelope.transaction;
+        const matching = this.budgetMatching.matchTransaction(
+          {
+            userId: new Types.ObjectId(userId),
+            name: transaction.description,
+            rawDescription: transaction.description,
+            normalizedMerchant: this.merchantNormalization.normalize(
+              transaction.description,
+            ),
+            date: transaction.transactionDate,
+            type: transaction.type,
+          } as Transaction,
+          context,
+        );
         const writeResult = await this.transactionModel
           .updateOne(
             {
@@ -46,6 +68,11 @@ export class TransactionMailPersistenceService {
                 userId: new Types.ObjectId(userId),
                 accountId: new Types.ObjectId(envelope.accountId),
                 name: transaction.description,
+                budgetItemId: matching.budgetItemId,
+                matchingStatus: matching.matchingStatus,
+                matchingSource: matching.matchingSource,
+                rawDescription: transaction.description,
+                normalizedMerchant: matching.normalizedMerchant,
                 amount: transaction.amount,
                 type: transaction.type,
                 currency: transaction.currency,

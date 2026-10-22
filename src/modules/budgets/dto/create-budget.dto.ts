@@ -1,5 +1,16 @@
-import { IsString, IsNotEmpty, IsEnum, IsDateString, IsOptional, ValidateNested, IsNumber, IsBoolean } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsEnum,
+  IsDateString,
+  IsOptional,
+  ValidateNested,
+  IsNumber,
+  IsBoolean,
+  IsArray,
+} from 'class-validator';
 import { Type } from 'class-transformer';
+import { BudgetItemMatchingRuleDto } from './budget-item-matching-rule.dto';
 
 export class CreateBudgetItemDto {
   @IsString()
@@ -29,6 +40,12 @@ export class CreateBudgetItemDto {
   @IsBoolean()
   @IsOptional()
   alertEnabled?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BudgetItemMatchingRuleDto)
+  matchingRules?: BudgetItemMatchingRuleDto[];
 }
 
 export class CreateBudgetDto {

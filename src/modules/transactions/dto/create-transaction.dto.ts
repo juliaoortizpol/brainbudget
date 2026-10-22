@@ -1,4 +1,13 @@
-import { IsNotEmpty, IsString, IsNumber, IsMongoId, IsOptional, IsEnum, IsDateString, Min } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsString,
+  IsNumber,
+  IsMongoId,
+  IsOptional,
+  IsEnum,
+  IsDateString,
+  Min,
+} from 'class-validator';
 
 export class CreateTransactionDto {
   @IsMongoId()
@@ -33,4 +42,24 @@ export class CreateTransactionDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @IsEnum(['matched', 'needs_review', 'manual'])
+  @IsNotEmpty()
+  matchingStatus!: 'matched' | 'needs_review' | 'manual';
+
+  @IsEnum(['rule', 'suggestion', 'manual'])
+  @IsOptional()
+  matchingSource?: 'rule' | 'suggestion' | 'manual';
+
+  @IsNumber()
+  @IsOptional()
+  matchingConfidence?: number;
+
+  @IsString()
+  @IsOptional()
+  rawDescription?: string;
+
+  @IsString()
+  @IsOptional()
+  normalizedMerchant?: string;
 }

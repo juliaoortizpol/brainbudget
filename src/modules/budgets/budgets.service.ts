@@ -7,7 +7,8 @@ import {
   Transaction,
   TransactionDocument,
 } from '@/modules/transactions/schemas/transaction.schema';
-import { CreateBudgetDto } from './dto/create-budget.dto';
+import { CreateBudgetDto, CreateBudgetItemDto } from './dto/create-budget.dto';
+import { UpdateBudgetItemDto } from './dto/update-budget-item.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 
 @Injectable()
@@ -215,7 +216,7 @@ export class BudgetsService {
   async addItem(
     budgetId: string,
     userId: string,
-    createItemDto: any,
+    createItemDto: CreateBudgetItemDto,
   ): Promise<any> {
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(budgetId);
@@ -239,8 +240,11 @@ export class BudgetsService {
     budgetId: string,
     itemId: string,
     userId: string,
-    updateDto: any,
+    updateDto: UpdateBudgetItemDto,
   ): Promise<any> {
+    const updates = Object.fromEntries(
+      Object.entries(updateDto).filter(([, value]) => value !== undefined),
+    );
     const updatedItem = await this.budgetItemModel
       .findOneAndUpdate(
         {
@@ -249,8 +253,8 @@ export class BudgetsService {
           userId: new Types.ObjectId(userId),
           isDeleted: false,
         },
-        { $set: updateDto },
-        { new: true },
+        { $set: updates },
+        { new: true, runValidators: true },
       )
       .exec();
 

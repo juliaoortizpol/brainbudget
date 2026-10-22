@@ -2,6 +2,10 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { User } from '@/modules/users/schemas/user.schema';
 import { Budget } from './budget.schema';
+import {
+  BudgetItemMatchingRule,
+  BudgetItemMatchingRuleSchema,
+} from './budget-item-matching-rule.schema';
 
 export type BudgetItemDocument = BudgetItem & Document;
 
@@ -33,6 +37,9 @@ export class BudgetItem {
 
   @Prop()
   alertEnabled?: boolean;
+
+  @Prop({ type: [BudgetItemMatchingRuleSchema], default: [] })
+  matchingRules!: BudgetItemMatchingRule[];
 
   @Prop({ default: false })
   isDeleted?: boolean;

@@ -1,3 +1,7 @@
+import { BudgetMatchingContextService } from '@/modules/budgets/budget-matching-context.service';
+import { Types } from 'mongoose';
+import { BudgetMatchingService } from '@/modules/budgets/budget-matching.service';
+import { MerchantNormalizationService } from '@/modules/transactions/merchant-normalization.service';
 import { TransactionSource } from '@/modules/transactions/schemas/transaction.schema';
 import { MatchedMailTransactionEnvelope } from './contracts';
 import { TransactionMailPersistenceService } from './transaction-mail-persistence.service';
@@ -21,6 +25,63 @@ describe('TransactionMailPersistenceService', () => {
     },
   };
 
+  it('loads budgets and items once for 100 transactions', async () => {
+    const budget = {
+      _id: new Types.ObjectId(),
+      userId: new Types.ObjectId(userId),
+      status: 'active',
+      isDeleted: false,
+      startDate: new Date('2026-07-01'),
+      endDate: new Date('2026-07-31'),
+    };
+    const budgets = {
+      find: jest
+        .fn()
+        .mockReturnValue({ exec: jest.fn().mockResolvedValue([budget]) }),
+    };
+    const items = {
+      find: jest
+        .fn()
+        .mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }),
+    };
+    const transactionModel = {
+      updateOne: jest
+        .fn()
+        .mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ upsertedCount: 1 }),
+        }),
+    };
+    const normalization = new MerchantNormalizationService();
+    const service = new TransactionMailPersistenceService(
+      transactionModel as any,
+      normalization,
+      new BudgetMatchingService(normalization),
+      new BudgetMatchingContextService(budgets as any, items as any),
+    );
+    const result = await service.save(
+      userId,
+      Array.from({ length: 100 }, (_, index) => ({
+        ...envelope,
+        messageId: `mail-${index}`,
+      })),
+    );
+    expect(result.transactionsCreated).toBe(100);
+    expect(budgets.find).toHaveBeenCalledTimes(1);
+    expect(items.find).toHaveBeenCalledTimes(1);
+    expect(budgets.find).toHaveBeenCalledWith({
+      userId: budget.userId,
+      status: 'active',
+      isDeleted: false,
+    });
+    expect(items.find).toHaveBeenCalledWith({
+      userId: budget.userId,
+      budgetId: { $in: [budget._id] },
+      isDeleted: false,
+    });
+    await service.save(userId, []);
+    expect(budgets.find).toHaveBeenCalledTimes(1);
+  });
+
   it('creates a Gmail transaction using an atomic upsert', async () => {
     const exec = jest.fn().mockResolvedValue({ upsertedCount: 1 });
     const transactionModel = {
@@ -28,6 +89,18 @@ describe('TransactionMailPersistenceService', () => {
     };
     const service = new TransactionMailPersistenceService(
       transactionModel as any,
+      new MerchantNormalizationService(),
+      {
+        matchTransaction: jest.fn().mockImplementation((transaction) => ({
+          ...transaction,
+          matchingStatus: 'matched',
+          matchingSource: 'rule',
+          budgetItemId: '507f191e810c19729de860ec',
+        })),
+      } as unknown as BudgetMatchingService,
+      {
+        load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),
+      } as unknown as BudgetMatchingContextService,
     );
 
     const result = await service.save(userId, [envelope]);
@@ -51,6 +124,11 @@ describe('TransactionMailPersistenceService', () => {
           sourceMessageId: envelope.messageId,
           parserKey: 'qik.credit-card',
           parserVersion: 1,
+          rawDescription: 'APPLE.COM/BILL',
+          normalizedMerchant: 'apple bill',
+          matchingStatus: 'matched',
+          matchingSource: 'rule',
+          budgetItemId: '507f191e810c19729de860ec',
         }),
       },
       { upsert: true, runValidators: true },
@@ -65,6 +143,16 @@ describe('TransactionMailPersistenceService', () => {
     };
     const service = new TransactionMailPersistenceService(
       transactionModel as any,
+      new MerchantNormalizationService(),
+      {
+        matchTransaction: jest.fn().mockImplementation((transaction) => ({
+          ...transaction,
+          matchingStatus: 'needs_review',
+        })),
+      } as unknown as BudgetMatchingService,
+      {
+        load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),
+      } as unknown as BudgetMatchingContextService,
     );
 
     const result = await service.save(userId, [envelope]);
@@ -81,6 +169,16 @@ describe('TransactionMailPersistenceService', () => {
     };
     const service = new TransactionMailPersistenceService(
       transactionModel as any,
+      new MerchantNormalizationService(),
+      {
+        matchTransaction: jest.fn().mockImplementation((transaction) => ({
+          ...transaction,
+          matchingStatus: 'needs_review',
+        })),
+      } as unknown as BudgetMatchingService,
+      {
+        load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),
+      } as unknown as BudgetMatchingContextService,
     );
 
     const result = await service.save(userId, [envelope]);
@@ -97,6 +195,16 @@ describe('TransactionMailPersistenceService', () => {
     };
     const service = new TransactionMailPersistenceService(
       transactionModel as any,
+      new MerchantNormalizationService(),
+      {
+        matchTransaction: jest.fn().mockImplementation((transaction) => ({
+          ...transaction,
+          matchingStatus: 'needs_review',
+        })),
+      } as unknown as BudgetMatchingService,
+      {
+        load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),
+      } as unknown as BudgetMatchingContextService,
     );
 
     const result = await service.save(userId, [envelope]);

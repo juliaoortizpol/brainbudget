@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BudgetsModule } from '@/modules/budgets/budgets.module';
 import { AccountMailQueryBuilder } from './account-mail-query.builder';
 import { AccountMailContextService } from './account-mail-context.service';
 import { AccountsModule } from '@/modules/accounts/accounts.module';
@@ -18,6 +19,7 @@ import { TransactionMailImportController } from './transaction-mail-import.contr
 
 @Module({
   imports: [
+    BudgetsModule,
     AccountsModule,
     InstitutionsModule,
     GmailReaderModule,
