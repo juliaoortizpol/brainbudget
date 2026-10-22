@@ -11,13 +11,13 @@ describe('Budget item rename', () => {
   });
 
   it('accepts a name-only update and persists the new name within the user and budget scope', async () => {
-    const dto = await pipe.transform(
+    const dto = (await pipe.transform(
       { name: 'Transportation' },
       {
         type: 'body',
         metatype: UpdateBudgetItemDto,
       },
-    );
+    )) as UpdateBudgetItemDto;
     const budgetId = new Types.ObjectId();
     const itemId = new Types.ObjectId();
     const userId = new Types.ObjectId();
@@ -27,7 +27,11 @@ describe('Budget item rename', () => {
         .fn()
         .mockReturnValue({ exec: jest.fn().mockResolvedValue(saved) }),
     };
-    const service = new BudgetsService({} as any, itemModel as any, {} as any);
+    const service = new BudgetsService(
+      {} as ConstructorParameters<typeof BudgetsService>[0],
+      itemModel as unknown as ConstructorParameters<typeof BudgetsService>[1],
+      {} as ConstructorParameters<typeof BudgetsService>[2],
+    );
 
     await expect(
       service.updateBudgetItem(

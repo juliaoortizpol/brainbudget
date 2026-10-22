@@ -1,3 +1,4 @@
+import type { GmailMessage } from '@/modules/gmail-reader/gmail-reader.types';
 import { Injectable } from '@nestjs/common';
 import { GmailReaderService } from '@/modules/gmail-reader/gmail-reader.service';
 import {
@@ -31,7 +32,7 @@ export class AccountMailFetcherService {
     const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
     const maxPages = options.maxPages ?? DEFAULT_MAX_PAGES;
     const includeBody = options.includeBody ?? true;
-    const messagesById = new Map();
+    const messagesById = new Map<string, GmailMessage>();
     let pageToken = options.pageToken;
     let pagesRead = 0;
 

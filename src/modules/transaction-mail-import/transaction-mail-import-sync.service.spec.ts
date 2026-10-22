@@ -46,9 +46,15 @@ describe('TransactionMailImportSyncService', () => {
       markSynced: jest.fn().mockResolvedValue(1),
     };
     const service = new TransactionMailImportSyncService(
-      pipeline as any,
-      persistence as any,
-      accountsService as any,
+      pipeline as unknown as ConstructorParameters<
+        typeof TransactionMailImportSyncService
+      >[0],
+      persistence as unknown as ConstructorParameters<
+        typeof TransactionMailImportSyncService
+      >[1],
+      accountsService as unknown as ConstructorParameters<
+        typeof TransactionMailImportSyncService
+      >[2],
     );
     const options = { newerThanDays: 30, maxPages: 5, pageSize: 50 };
 
@@ -109,9 +115,15 @@ describe('TransactionMailImportSyncService', () => {
       markSynced: jest.fn().mockResolvedValue(0),
     };
     const service = new TransactionMailImportSyncService(
-      pipeline as any,
-      persistence as any,
-      accountsService as any,
+      pipeline as unknown as ConstructorParameters<
+        typeof TransactionMailImportSyncService
+      >[0],
+      persistence as unknown as ConstructorParameters<
+        typeof TransactionMailImportSyncService
+      >[1],
+      accountsService as unknown as ConstructorParameters<
+        typeof TransactionMailImportSyncService
+      >[2],
     );
 
     const result = await service.sync('user-1', {

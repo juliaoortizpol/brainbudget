@@ -19,8 +19,13 @@ export class InstitutionsService {
   async create(dto: CreateInstitutionDto): Promise<Institution> {
     try {
       return await new this.institutionModel(this.normalize(dto)).save();
-    } catch (error: any) {
-      if (error?.code === 11000) {
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 11000
+      ) {
         throw new ConflictException(
           `Institution slug '${dto.slug}' already exists`,
         );
@@ -63,7 +68,7 @@ export class InstitutionsService {
 
   async findByIds(ids: string[]): Promise<Institution[]> {
     const objectIds = ids
-      .filter(Types.ObjectId.isValid)
+      .filter((id) => Types.ObjectId.isValid(id))
       .map((id) => new Types.ObjectId(id));
     return this.institutionModel
       .find({ _id: { $in: objectIds }, enabled: true })
@@ -83,8 +88,13 @@ export class InstitutionsService {
       if (!institution)
         throw new NotFoundException(`Institution #${id} not found`);
       return institution;
-    } catch (error: any) {
-      if (error?.code === 11000) {
+    } catch (error: unknown) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 11000
+      ) {
         throw new ConflictException(
           `Institution slug '${dto.slug}' already exists`,
         );

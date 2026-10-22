@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
 import { User } from '@/modules/users/schemas/user.schema';
 import { Budget } from './budget.schema';
 import {
@@ -7,7 +7,7 @@ import {
   BudgetItemMatchingRuleSchema,
 } from './budget-item-matching-rule.schema';
 
-export type BudgetItemDocument = BudgetItem & Document;
+export type BudgetItemDocument = HydratedDocument<BudgetItem>;
 
 @Schema({ timestamps: true })
 export class BudgetItem {

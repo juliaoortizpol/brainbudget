@@ -10,11 +10,6 @@ describe('BudgetsService spent calculation', () => {
         totalSpent: 8310.119999999999,
       },
     ]);
-    const service = new BudgetsService(
-      {} as any,
-      {} as any,
-      { aggregate } as any,
-    );
     const budget = {
       userId: new Types.ObjectId('69e7e32d72be00b046f1b706'),
       startDate: new Date('2026-07-01T00:00:00.000Z'),
@@ -25,7 +20,27 @@ describe('BudgetsService spent calculation', () => {
       toObject: () => ({ _id: itemId, name: 'Food' }),
     };
 
-    const result = await (service as any).appendSpentToItems(budget, [item]);
+    const findBudget = jest.fn().mockReturnValue({
+      exec: jest.fn().mockResolvedValue({ ...budget, toObject: () => budget }),
+    });
+    const findItems = jest
+      .fn()
+      .mockReturnValue({ exec: jest.fn().mockResolvedValue([item]) });
+    const publicService = new BudgetsService(
+      { findOne: findBudget } as unknown as ConstructorParameters<
+        typeof BudgetsService
+      >[0],
+      { find: findItems } as unknown as ConstructorParameters<
+        typeof BudgetsService
+      >[1],
+      { aggregate } as unknown as ConstructorParameters<
+        typeof BudgetsService
+      >[2],
+    );
+    const { items: result } = await publicService.findOne(
+      '507f1f77bcf86cd799439011',
+      budget.userId.toString(),
+    );
 
     expect(result).toEqual([
       expect.objectContaining({
