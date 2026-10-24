@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '@/common/types/authenticated-request';
 import {
   Controller,
   Get,
@@ -22,7 +23,10 @@ export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
   @Post()
-  create(@Request() req, @Body() createTransactionDto: CreateTransactionDto) {
+  create(
+    @Request() req: AuthenticatedRequest,
+    @Body() createTransactionDto: CreateTransactionDto,
+  ) {
     return this.transactionsService.create(
       req.user.userId,
       createTransactionDto,
@@ -30,18 +34,21 @@ export class TransactionsController {
   }
 
   @Get()
-  findAll(@Request() req, @Query() filterDto: GetTransactionsFilterDto) {
+  findAll(
+    @Request() req: AuthenticatedRequest,
+    @Query() filterDto: GetTransactionsFilterDto,
+  ) {
     return this.transactionsService.findAll(req.user.userId, filterDto);
   }
 
   @Get(':id')
-  findOne(@Request() req, @Param('id') id: string) {
+  findOne(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.transactionsService.findOne(id, req.user.userId);
   }
 
   @Patch(':id')
   update(
-    @Request() req,
+    @Request() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() updateTransactionDto: UpdateTransactionDto,
   ) {
@@ -53,7 +60,7 @@ export class TransactionsController {
   }
 
   @Delete(':id')
-  remove(@Request() req, @Param('id') id: string) {
+  remove(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.transactionsService.remove(id, req.user.userId);
   }
 }

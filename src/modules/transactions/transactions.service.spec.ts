@@ -7,7 +7,11 @@ describe('TransactionsService', () => {
     const transactionModel = {
       findOneAndUpdate: jest.fn().mockReturnValue({ exec }),
     };
-    const service = new TransactionsService(transactionModel as any);
+    const service = new TransactionsService(
+      transactionModel as unknown as ConstructorParameters<
+        typeof TransactionsService
+      >[0],
+    );
     const transactionId = '6a5b9091831aa8b3f83d6279';
     const userId = '69e7e32d72be00b046f1b706';
     const accountId = '6a57d746bd32c6b8ecd974fc';

@@ -19,7 +19,7 @@ describe('Budget item matching rules', () => {
   });
 
   it('accepts rules when creating and clears rules when updating', async () => {
-    const result = await pipe.transform(
+    const result = (await pipe.transform(
       {
         name: 'Food',
         type: 'expense',
@@ -27,7 +27,7 @@ describe('Budget item matching rules', () => {
         matchingRules: [rule],
       },
       { type: 'body', metatype: CreateBudgetItemDto },
-    );
+    )) as CreateBudgetItemDto;
     expect(result.matchingRules).toEqual([rule]);
     await expect(
       pipe.transform(

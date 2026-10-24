@@ -27,7 +27,9 @@ function assertUrl(
       throw new Error('HTTPS is required');
     }
   } catch {
-    throw new Error(`${key} must be a valid${requireHttps ? ' HTTPS' : ''} URL`);
+    throw new Error(
+      `${key} must be a valid${requireHttps ? ' HTTPS' : ''} URL`,
+    );
   }
 }
 

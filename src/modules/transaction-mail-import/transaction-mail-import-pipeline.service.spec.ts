@@ -38,11 +38,21 @@ describe('TransactionMailImportPipelineService', () => {
       match: jest.fn().mockReturnValue(matching),
     };
     const service = new TransactionMailImportPipelineService(
-      contextService as any,
-      queryBuilder as any,
-      fetcher as any,
-      parsingService as any,
-      accountMatcher as any,
+      contextService as unknown as ConstructorParameters<
+        typeof TransactionMailImportPipelineService
+      >[0],
+      queryBuilder as unknown as ConstructorParameters<
+        typeof TransactionMailImportPipelineService
+      >[1],
+      fetcher as unknown as ConstructorParameters<
+        typeof TransactionMailImportPipelineService
+      >[2],
+      parsingService as unknown as ConstructorParameters<
+        typeof TransactionMailImportPipelineService
+      >[3],
+      accountMatcher as unknown as ConstructorParameters<
+        typeof TransactionMailImportPipelineService
+      >[4],
     );
     const options = { newerThanDays: 30, maxPages: 5, pageSize: 50 };
 

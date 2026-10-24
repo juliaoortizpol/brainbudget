@@ -84,13 +84,13 @@ export class BudgetMatchingService {
           winners.clear();
         }
         if (comparison >= 0) {
-          winners.set(item._id.toString(), item._id as Types.ObjectId);
+          winners.set(item._id.toString(), item._id);
         }
       }
     }
 
     if (winners.size === 1) {
-      transaction.budgetItemId = winners.values().next().value;
+      transaction.budgetItemId = [...winners.values()][0];
       transaction.matchingStatus = 'matched';
       transaction.matchingSource = 'rule';
     } else {

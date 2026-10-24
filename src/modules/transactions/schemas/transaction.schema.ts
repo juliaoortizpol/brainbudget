@@ -1,10 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
 import { User } from '@/modules/users/schemas/user.schema';
 import { Account } from '@/modules/accounts/schemas/account.schema';
 import { BudgetItem } from '@/modules/budgets/schemas/budget-item.schema';
 
-export type TransactionDocument = Transaction & Document;
+export type TransactionDocument = HydratedDocument<Transaction>;
 
 export enum TransactionSource {
   MANUAL = 'manual',

@@ -1,3 +1,4 @@
+import type { BudgetMatchingContext } from './budget-matching-context.service';
 import { Types } from 'mongoose';
 import { MerchantNormalizationService } from '@/modules/transactions/merchant-normalization.service';
 import { BudgetMatchingService } from './budget-matching.service';
@@ -30,11 +31,14 @@ describe('BudgetMatchingService', () => {
     startDate: new Date('2026-10-01'),
     endDate: new Date('2026-10-31'),
   };
-  const match = (transaction: any, items: any[]) =>
+  const match = (
+    transaction: Parameters<BudgetMatchingService['matchTransaction']>[0],
+    items: unknown[],
+  ) =>
     service.matchTransaction(transaction, {
       userId,
-      budgets: [budget] as any,
-      items,
+      budgets: [budget] as unknown as BudgetMatchingContext['budgets'],
+      items: items as BudgetMatchingContext['items'],
     });
   const transaction = () => ({
     userId,
@@ -43,8 +47,8 @@ describe('BudgetMatchingService', () => {
     name: 'UBER *TRIP HELP.UBER.COM',
   });
 
-  it('assigns a normalized merchant rule match', async () => {
-    const result = await match(transaction(), [item] as any);
+  it('assigns a normalized merchant rule match', () => {
+    const result = match(transaction(), [item]);
     expect(result).toMatchObject({
       budgetItemId: item._id,
       matchingStatus: 'matched',
@@ -68,16 +72,14 @@ describe('BudgetMatchingService', () => {
         { field: 'merchant', operator: 'contains', value: '***' },
       ],
     },
-  ])('rejects ineligible items: %j', async (override) => {
-    expect(
-      await match(transaction(), [{ ...item, ...override }] as any),
-    ).toMatchObject({
+  ])('rejects ineligible items: %j', (override) => {
+    expect(match(transaction(), [{ ...item, ...override }])).toMatchObject({
       matchingStatus: 'needs_review',
       budgetItemId: undefined,
     });
   });
 
-  it('matches description equals after normalization', async () => {
+  it('matches description equals after normalization', () => {
     const candidate = {
       ...item,
       matchingRules: [
@@ -85,28 +87,23 @@ describe('BudgetMatchingService', () => {
       ],
     };
     expect(
-      await match({ ...transaction(), name: ' monthly rent ' }, [
-        candidate,
-      ] as any),
+      match({ ...transaction(), name: ' monthly rent ' }, [candidate]),
     ).toMatchObject({ matchingStatus: 'matched' });
   });
 
-  it('leaves conflicting matches for review', async () => {
+  it('leaves conflicting matches for review', () => {
     expect(
-      await match(transaction(), [
-        item,
-        { ...item, _id: new Types.ObjectId() },
-      ] as any),
+      match(transaction(), [item, { ...item, _id: new Types.ObjectId() }]),
     ).toMatchObject({ matchingStatus: 'needs_review' });
   });
 
-  it('preserves manual assignments', async () => {
+  it('preserves manual assignments', () => {
     const manual = {
       ...transaction(),
       matchingStatus: 'manual' as const,
       budgetItemId: item._id,
     };
-    expect(await match(manual, [])).toEqual(manual);
+    expect(match(manual, [])).toEqual(manual);
   });
 
   const candidate = (
@@ -139,7 +136,12 @@ describe('BudgetMatchingService', () => {
 
   it('prefers exact equality over a longer partial match on another field', () => {
     const exact = candidate('uber', 'equals', 'suggested');
-    const partial = candidate('monthly payment', 'contains', 'user', 'description');
+    const partial = candidate(
+      'monthly payment',
+      'contains',
+      'user',
+      'description',
+    );
     expect(
       match(
         {
@@ -219,8 +221,10 @@ describe('BudgetMatchingService', () => {
     expect(
       service.matchTransaction(transaction(), {
         userId,
-        budgets: [{ ...budget, ...override }] as any,
-        items: [item] as any,
+        budgets: [
+          { ...budget, ...override },
+        ] as unknown as BudgetMatchingContext['budgets'],
+        items: [item] as unknown as BudgetMatchingContext['items'],
       }),
     ).toMatchObject({ matchingStatus: 'needs_review' });
   });

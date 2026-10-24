@@ -7,6 +7,67 @@ import {
 } from './gmail-reader.errors';
 
 describe('GmailReaderService', () => {
+  it.each([
+    [{ response: { status: 401 } }, GmailReaderErrorCode.REAUTH_REQUIRED, true],
+    [{ code: 401 }, GmailReaderErrorCode.REAUTH_REQUIRED, true],
+    [
+      { response: { data: { error: 'invalid_grant' } } },
+      GmailReaderErrorCode.REAUTH_REQUIRED,
+      true,
+    ],
+    [
+      new Error('Invalid credentials'),
+      GmailReaderErrorCode.REAUTH_REQUIRED,
+      true,
+    ],
+    [
+      { response: { status: 404 } },
+      GmailReaderErrorCode.MESSAGE_NOT_FOUND,
+      false,
+    ],
+    [{ code: 404 }, GmailReaderErrorCode.MESSAGE_NOT_FOUND, false],
+    [null, GmailReaderErrorCode.TEMPORARILY_UNAVAILABLE, false],
+    ['unexpected failure', GmailReaderErrorCode.TEMPORARILY_UNAVAILABLE, false],
+    [
+      { response: { status: 503 } },
+      GmailReaderErrorCode.TEMPORARILY_UNAVAILABLE,
+      false,
+    ],
+  ])(
+    'classifies provider error %# without unsafe property access',
+    async (error, expectedCode, requiresAuthorization) => {
+      const updateOne = jest
+        .fn()
+        .mockReturnValue({ exec: jest.fn().mockResolvedValue(undefined) });
+      const connectionModel = {
+        findOne: jest.fn().mockReturnValue({
+          select: jest.fn().mockReturnValue({
+            exec: jest.fn().mockResolvedValue({
+              refreshToken: 'synthetic-refresh-token',
+            }),
+          }),
+        }),
+        updateOne,
+      };
+      const clientFactory = {
+        createGmailClient: () => ({
+          users: { messages: { get: jest.fn().mockRejectedValue(error) } },
+        }),
+      };
+      const service = new GmailReaderService(
+        connectionModel as unknown as ConstructorParameters<
+          typeof GmailReaderService
+        >[0],
+        clientFactory as unknown as GmailClientFactory,
+        new ConfigService(),
+      );
+      await expect(
+        service.getMessage('507f1f77bcf86cd799439011', 'synthetic-message'),
+      ).rejects.toMatchObject({ code: expectedCode });
+      expect(updateOne).toHaveBeenCalledTimes(requiresAuthorization ? 1 : 0);
+    },
+  );
+
   it('lists and normalizes a page of Gmail messages', async () => {
     const connection = {
       refreshToken: 'refresh-token',
@@ -50,7 +111,9 @@ describe('GmailReaderService', () => {
       createGmailClient: jest.fn().mockReturnValue(gmail),
     };
     const service = new GmailReaderService(
-      connectionModel as any,
+      connectionModel as unknown as ConstructorParameters<
+        typeof GmailReaderService
+      >[0],
       clientFactory as unknown as GmailClientFactory,
       { get: jest.fn() } as unknown as ConfigService,
     );
@@ -91,7 +154,9 @@ describe('GmailReaderService', () => {
       }),
     };
     const service = new GmailReaderService(
-      connectionModel as any,
+      connectionModel as unknown as ConstructorParameters<
+        typeof GmailReaderService
+      >[0],
       {} as GmailClientFactory,
       { get: jest.fn() } as unknown as ConfigService,
     );
@@ -128,7 +193,9 @@ describe('GmailReaderService', () => {
       },
     };
     const service = new GmailReaderService(
-      connectionModel as any,
+      connectionModel as unknown as ConstructorParameters<
+        typeof GmailReaderService
+      >[0],
       {
         createGmailClient: jest.fn().mockReturnValue(gmail),
       } as unknown as GmailClientFactory,
@@ -151,7 +218,7 @@ describe('GmailReaderService', () => {
       code: GmailReaderErrorCode.REAUTH_REQUIRED,
     });
     expect(connectionModel.updateOne).toHaveBeenCalledWith(
-      { userId: expect.anything() },
+      { userId: expect.anything() as unknown },
       { $set: { status: 're_auth_required' } },
     );
   });

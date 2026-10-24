@@ -11,6 +11,15 @@ import { CreateBudgetDto, CreateBudgetItemDto } from './dto/create-budget.dto';
 import { UpdateBudgetItemDto } from './dto/update-budget-item.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 
+export type BudgetItemWithSpent = BudgetItem & {
+  _id: Types.ObjectId;
+  spent: number;
+};
+export type BudgetWithItems = Budget & {
+  _id: Types.ObjectId;
+  items: BudgetItemWithSpent[];
+};
+
 @Injectable()
 export class BudgetsService {
   constructor(
@@ -21,7 +30,10 @@ export class BudgetsService {
     private transactionModel: Model<TransactionDocument>,
   ) {}
 
-  async create(userId: string, createBudgetDto: CreateBudgetDto): Promise<any> {
+  async create(
+    userId: string,
+    createBudgetDto: CreateBudgetDto,
+  ): Promise<BudgetWithItems> {
     const { items, ...budgetData } = createBudgetDto;
     const userObjectId = new Types.ObjectId(userId);
 
@@ -65,7 +77,7 @@ export class BudgetsService {
     return this.findOne(savedBudget._id.toString(), userId);
   }
 
-  async findAll(userId: string): Promise<any[]> {
+  async findAll(userId: string): Promise<BudgetWithItems[]> {
     const budgets = await this.budgetModel
       .find({ userId: new Types.ObjectId(userId), isDeleted: false })
       .exec();
@@ -77,7 +89,7 @@ export class BudgetsService {
       .find({ budgetId: { $in: budgetIds }, isDeleted: false })
       .exec();
 
-    const itemsByBudget = new Map<string, any[]>();
+    const itemsByBudget = new Map<string, BudgetItemDocument[]>();
     for (const item of allItems) {
       const bId = item.budgetId.toString();
       if (!itemsByBudget.has(bId)) {
@@ -92,7 +104,7 @@ export class BudgetsService {
         const items = await this.appendSpentToItems(budget, budgetItems);
 
         return {
-          ...budget.toObject(),
+          ...budget.toObject<Budget & { _id: Types.ObjectId }>(),
           items,
         };
       }),
@@ -101,7 +113,7 @@ export class BudgetsService {
     return budgetsWithSpent;
   }
 
-  async findOne(id: string, userId: string): Promise<any> {
+  async findOne(id: string, userId: string): Promise<BudgetWithItems> {
     const budget = await this.budgetModel
       .findOne({
         _id: new Types.ObjectId(id),
@@ -121,7 +133,7 @@ export class BudgetsService {
     const items = await this.appendSpentToItems(budget, budgetItems);
 
     return {
-      ...budget.toObject(),
+      ...budget.toObject<Budget & { _id: Types.ObjectId }>(),
       items,
     };
   }
@@ -130,7 +142,7 @@ export class BudgetsService {
     id: string,
     userId: string,
     updateBudgetDto: UpdateBudgetDto,
-  ): Promise<any> {
+  ): Promise<BudgetWithItems> {
     const { items, ...budgetData } = updateBudgetDto;
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(id);
@@ -162,7 +174,7 @@ export class BudgetsService {
     return this.findOne(id, userId);
   }
 
-  async softDelete(id: string, userId: string): Promise<any> {
+  async softDelete(id: string, userId: string): Promise<BudgetDocument> {
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(id);
 
@@ -193,7 +205,7 @@ export class BudgetsService {
     budgetId: string,
     itemId: string,
     userId: string,
-  ): Promise<any> {
+  ): Promise<BudgetItemDocument> {
     const deletedItem = await this.budgetItemModel
       .findOneAndUpdate(
         {
@@ -217,7 +229,7 @@ export class BudgetsService {
     budgetId: string,
     userId: string,
     createItemDto: CreateBudgetItemDto,
-  ): Promise<any> {
+  ): Promise<BudgetItemDocument> {
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(budgetId);
 
@@ -241,7 +253,7 @@ export class BudgetsService {
     itemId: string,
     userId: string,
     updateDto: UpdateBudgetItemDto,
-  ): Promise<any> {
+  ): Promise<BudgetItemDocument> {
     const updates = Object.fromEntries(
       Object.entries(updateDto).filter(([, value]) => value !== undefined),
     );
@@ -264,15 +276,18 @@ export class BudgetsService {
     return updatedItem;
   }
   private async appendSpentToItems(
-    budget: any,
-    budgetItems: any[],
-  ): Promise<any[]> {
+    budget: Budget,
+    budgetItems: BudgetItemDocument[],
+  ): Promise<BudgetItemWithSpent[]> {
     if (!budgetItems.length) return [];
 
     const now = new Date();
     const endDateLimit = budget.endDate < now ? budget.endDate : now;
 
-    const transactions = await this.transactionModel.aggregate([
+    const transactions = await this.transactionModel.aggregate<{
+      _id: Types.ObjectId;
+      totalSpent: number;
+    }>([
       {
         $match: {
           userId: budget.userId,
@@ -317,7 +332,7 @@ export class BudgetsService {
     }
 
     return budgetItems.map((item) => ({
-      ...item.toObject(),
+      ...item.toObject<BudgetItem & { _id: Types.ObjectId }>(),
       spent: this.roundCurrency(spentMap.get(item._id.toString()) || 0),
     }));
   }

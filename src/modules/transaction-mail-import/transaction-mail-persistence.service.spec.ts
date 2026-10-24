@@ -45,18 +45,25 @@ describe('TransactionMailPersistenceService', () => {
         .mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }),
     };
     const transactionModel = {
-      updateOne: jest
-        .fn()
-        .mockReturnValue({
-          exec: jest.fn().mockResolvedValue({ upsertedCount: 1 }),
-        }),
+      updateOne: jest.fn().mockReturnValue({
+        exec: jest.fn().mockResolvedValue({ upsertedCount: 1 }),
+      }),
     };
     const normalization = new MerchantNormalizationService();
     const service = new TransactionMailPersistenceService(
-      transactionModel as any,
+      transactionModel as unknown as ConstructorParameters<
+        typeof TransactionMailPersistenceService
+      >[0],
       normalization,
       new BudgetMatchingService(normalization),
-      new BudgetMatchingContextService(budgets as any, items as any),
+      new BudgetMatchingContextService(
+        budgets as unknown as ConstructorParameters<
+          typeof BudgetMatchingContextService
+        >[0],
+        items as unknown as ConstructorParameters<
+          typeof BudgetMatchingContextService
+        >[1],
+      ),
     );
     const result = await service.save(
       userId,
@@ -88,15 +95,19 @@ describe('TransactionMailPersistenceService', () => {
       updateOne: jest.fn().mockReturnValue({ exec }),
     };
     const service = new TransactionMailPersistenceService(
-      transactionModel as any,
+      transactionModel as unknown as ConstructorParameters<
+        typeof TransactionMailPersistenceService
+      >[0],
       new MerchantNormalizationService(),
       {
-        matchTransaction: jest.fn().mockImplementation((transaction) => ({
-          ...transaction,
-          matchingStatus: 'matched',
-          matchingSource: 'rule',
-          budgetItemId: '507f191e810c19729de860ec',
-        })),
+        matchTransaction: jest
+          .fn()
+          .mockImplementation((transaction: Record<string, unknown>) => ({
+            ...transaction,
+            matchingStatus: 'matched',
+            matchingSource: 'rule',
+            budgetItemId: '507f191e810c19729de860ec',
+          })),
       } as unknown as BudgetMatchingService,
       {
         load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),
@@ -119,7 +130,7 @@ describe('TransactionMailPersistenceService', () => {
       }),
       {
         $setOnInsert: expect.objectContaining({
-          accountId: expect.anything(),
+          accountId: expect.anything() as unknown,
           source: TransactionSource.GMAIL,
           sourceMessageId: envelope.messageId,
           parserKey: 'qik.credit-card',
@@ -129,7 +140,7 @@ describe('TransactionMailPersistenceService', () => {
           matchingStatus: 'matched',
           matchingSource: 'rule',
           budgetItemId: '507f191e810c19729de860ec',
-        }),
+        }) as unknown,
       },
       { upsert: true, runValidators: true },
     );
@@ -142,13 +153,17 @@ describe('TransactionMailPersistenceService', () => {
       }),
     };
     const service = new TransactionMailPersistenceService(
-      transactionModel as any,
+      transactionModel as unknown as ConstructorParameters<
+        typeof TransactionMailPersistenceService
+      >[0],
       new MerchantNormalizationService(),
       {
-        matchTransaction: jest.fn().mockImplementation((transaction) => ({
-          ...transaction,
-          matchingStatus: 'needs_review',
-        })),
+        matchTransaction: jest
+          .fn()
+          .mockImplementation((transaction: Record<string, unknown>) => ({
+            ...transaction,
+            matchingStatus: 'needs_review',
+          })),
       } as unknown as BudgetMatchingService,
       {
         load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),
@@ -168,13 +183,17 @@ describe('TransactionMailPersistenceService', () => {
       }),
     };
     const service = new TransactionMailPersistenceService(
-      transactionModel as any,
+      transactionModel as unknown as ConstructorParameters<
+        typeof TransactionMailPersistenceService
+      >[0],
       new MerchantNormalizationService(),
       {
-        matchTransaction: jest.fn().mockImplementation((transaction) => ({
-          ...transaction,
-          matchingStatus: 'needs_review',
-        })),
+        matchTransaction: jest
+          .fn()
+          .mockImplementation((transaction: Record<string, unknown>) => ({
+            ...transaction,
+            matchingStatus: 'needs_review',
+          })),
       } as unknown as BudgetMatchingService,
       {
         load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),
@@ -194,13 +213,17 @@ describe('TransactionMailPersistenceService', () => {
       }),
     };
     const service = new TransactionMailPersistenceService(
-      transactionModel as any,
+      transactionModel as unknown as ConstructorParameters<
+        typeof TransactionMailPersistenceService
+      >[0],
       new MerchantNormalizationService(),
       {
-        matchTransaction: jest.fn().mockImplementation((transaction) => ({
-          ...transaction,
-          matchingStatus: 'needs_review',
-        })),
+        matchTransaction: jest
+          .fn()
+          .mockImplementation((transaction: Record<string, unknown>) => ({
+            ...transaction,
+            matchingStatus: 'needs_review',
+          })),
       } as unknown as BudgetMatchingService,
       {
         load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),

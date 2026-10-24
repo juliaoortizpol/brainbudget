@@ -164,7 +164,8 @@ export class AccountsService {
           'A custom institution name is required when institutionId is removed',
         );
       }
-      const { institutionId: _, ...values } = dto;
+      const values = { ...dto };
+      delete values.institutionId;
       return {
         values: { ...values, institution: customName },
         unsetInstitutionId: true,

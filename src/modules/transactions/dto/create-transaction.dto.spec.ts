@@ -30,7 +30,8 @@ describe('Transaction matching metadata', () => {
   });
 
   it('requires matchingStatus on creation', async () => {
-    const { matchingStatus, ...withoutStatus } = transaction;
+    const withoutStatus: Partial<typeof transaction> = { ...transaction };
+    delete withoutStatus.matchingStatus;
     await expect(
       pipe.transform(withoutStatus, {
         type: 'body',

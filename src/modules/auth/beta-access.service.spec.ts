@@ -13,7 +13,9 @@ describe('BetaAccessService', () => {
     } as unknown as ConfigService;
     const service = new BetaAccessService(config);
 
-    expect(() => service.assertAllowed(' JulioOrtizPol@gmail.com ')).not.toThrow();
+    expect(() =>
+      service.assertAllowed(' JulioOrtizPol@gmail.com '),
+    ).not.toThrow();
     expect(() =>
       service.assertAllowed('gabrielasilvestre847@gmail.com'),
     ).not.toThrow();

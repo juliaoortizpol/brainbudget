@@ -72,7 +72,7 @@ describe('InstitutionMailParsingService', () => {
         messageId: 'message-1',
         parserKey: rule.parserKey,
         parserVersion: 1,
-        transaction: expect.objectContaining({ amount: 100 }),
+        transaction: expect.objectContaining({ amount: 100 }) as unknown,
       }),
     ]);
   });

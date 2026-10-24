@@ -7,15 +7,19 @@ describe('AccountsService institution selection', () => {
 
   it('uses the canonical name for a registered institution', async () => {
     const save = jest.fn().mockResolvedValue({ name: 'My card' });
-    const accountModel = jest.fn().mockImplementation((value) => ({
-      ...value,
-      save,
-    }));
+    const accountModel = jest
+      .fn()
+      .mockImplementation((value: Record<string, unknown>) => ({
+        ...value,
+        save,
+      }));
     const institutions = {
       findAvailableOne: jest.fn().mockResolvedValue({ name: 'Banreservas' }),
     };
     const service = new AccountsService(
-      accountModel as any,
+      accountModel as unknown as ConstructorParameters<
+        typeof AccountsService
+      >[0],
       institutions as unknown as InstitutionsService,
     );
 
@@ -29,18 +33,22 @@ describe('AccountsService institution selection', () => {
     expect(accountModel).toHaveBeenCalledWith(
       expect.objectContaining({
         institution: 'Banreservas',
-        institutionId: expect.anything(),
+        institutionId: expect.anything() as unknown,
       }),
     );
   });
 
   it('allows an account with an unregistered institution name', async () => {
-    const accountModel = jest.fn().mockImplementation((value) => ({
-      ...value,
-      save: jest.fn().mockResolvedValue(value),
-    }));
+    const accountModel = jest
+      .fn()
+      .mockImplementation((value: Record<string, unknown>) => ({
+        ...value,
+        save: jest.fn().mockResolvedValue(value),
+      }));
     const service = new AccountsService(
-      accountModel as any,
+      accountModel as unknown as ConstructorParameters<
+        typeof AccountsService
+      >[0],
       {} as InstitutionsService,
     );
 
@@ -61,7 +69,9 @@ describe('AccountsService institution selection', () => {
       findOneAndUpdate: jest.fn().mockReturnValue({ exec }),
     };
     const service = new AccountsService(
-      accountModel as any,
+      accountModel as unknown as ConstructorParameters<
+        typeof AccountsService
+      >[0],
       {} as InstitutionsService,
     );
 
@@ -71,7 +81,7 @@ describe('AccountsService institution selection', () => {
     });
 
     expect(accountModel.findOneAndUpdate).toHaveBeenCalledWith(
-      expect.anything(),
+      expect.anything() as unknown,
       {
         $set: { institution: 'Community Bank' },
         $unset: { institutionId: 1 },
@@ -86,7 +96,9 @@ describe('AccountsService institution selection', () => {
       updateMany: jest.fn().mockReturnValue({ exec }),
     };
     const service = new AccountsService(
-      accountModel as any,
+      accountModel as unknown as ConstructorParameters<
+        typeof AccountsService
+      >[0],
       {} as InstitutionsService,
     );
     const syncedAt = new Date('2026-07-15T12:00:00.000Z');
@@ -104,8 +116,10 @@ describe('AccountsService institution selection', () => {
     ).resolves.toBe(2);
     expect(accountModel.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        _id: { $in: [expect.anything(), expect.anything()] },
-        userId: expect.anything(),
+        _id: {
+          $in: [expect.anything() as unknown, expect.anything() as unknown],
+        },
+        userId: expect.anything() as unknown,
         isDeleted: { $ne: true },
       }),
       { $set: { lastSynced: syncedAt } },

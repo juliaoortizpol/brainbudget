@@ -1,0 +1,57 @@
+name: Backend CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: backend-${{ matrix.check }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [lint, types, unit, build]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: lint
+        if: matrix.check == 'lint'
+        run: npx --no-install eslint "{src,apps,libs,test}/**/*.ts"
+      - name: types
+        if: matrix.check == 'types'
+        run: npx --no-install tsc --noEmit --incremental false -p tsconfig.json
+      - name: unit
+        if: matrix.check == 'unit'
+        run: npm test -- --ci --runInBand
+      - name: build
+        if: matrix.check == 'build'
+        run: npm run build
+
+  required:
+    name: backend-required
+    if: always()
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every check to pass
+        env:
+          CHECK_RESULT: ${{ needs.checks.result }}
+        run: test "$CHECK_RESULT" = success

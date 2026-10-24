@@ -1,3 +1,8 @@
+import type {
+  AuthenticatedRequest,
+  AuthenticatedUser,
+  LoginUser,
+} from '@/common/types/authenticated-request';
 import {
   Controller,
   Post,
@@ -30,27 +35,30 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @Post('login')
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  async login(@Request() req: any) {
+  login(@Request() req: AuthenticatedRequest<LoginUser>) {
     return this.authService.login(req.user);
   }
 
   @Get('google')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @UseGuards(GoogleOauthGuard)
-  async googleAuth() {
+  googleAuth() {
     // Guard redirects
   }
 
   @Get('google/callback')
   @UseGuards(GoogleOauthGuard)
-  async googleAuthRedirect(@Request() req: any, @Res() res: Response) {
-    const { access_token } = await this.authService.login(req.user);
+  googleAuthRedirect(
+    @Request() req: AuthenticatedRequest<LoginUser>,
+    @Res() res: Response,
+  ) {
+    const { access_token } = this.authService.login(req.user);
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     return res.redirect(`${frontendUrl}/auth/callback?token=${access_token}`);
   }
 
   @Post('logout')
-  async logout() {
+  logout() {
     // For stateless JWT, the client handles logout by deleting the token.
     // This endpoint can be used if you decide to implement token blacklisting later.
     return { message: 'Logged out successfully' };
@@ -58,7 +66,7 @@ export class AuthController {
 
   @UseGuards(JwtAuthGuard)
   @Get('profile')
-  getProfile(@CurrentUser() user: any) {
+  getProfile(@CurrentUser() user: AuthenticatedUser) {
     return user;
   }
 }
