@@ -15,6 +15,11 @@ new money representation without an explicit migration decision.
 Keep Gmail parsing, account matching and persistence in their existing pipeline stages.
 
 ## Verification
+Before committing or pushing any executable/configuration change, run `npm run verify:ci`
+with Node 24, plus the Python controller tests when orchestration changes. This includes
+tooling outside src: the root type-check also discovers orchestration TypeScript files.
+Unit/browser smoke passes alone are not evidence that type-checking or building passed.
+Inspect the exact-head GitHub checks after pushing before reporting CI success.
 Use Node 24 and npm ci (the initial CI baseline).
 Run non-mutating lint: npx --no-install eslint "{src,apps,libs,test}/**/*.ts"
 Run types: npx --no-install tsc --noEmit --incremental false -p tsconfig.json
