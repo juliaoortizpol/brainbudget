@@ -30,7 +30,7 @@ CHECKS = {
 
 
 def clean_env(scratch=None, node=None):
-    keys = ['PATH', 'SystemRoot', 'WINDIR', 'COMSPEC', 'PATHEXT', 'USERPROFILE', 'HOME',
+    keys = ['PATH', 'SystemRoot', 'SystemDrive', 'WINDIR', 'COMSPEC', 'PATHEXT', 'USERPROFILE', 'HOME',
             'LOCALAPPDATA', 'APPDATA', 'TEMP', 'TMP', 'CODEX_HOME']
     env = {k: os.environ[k] for k in keys if k in os.environ}
     if node:

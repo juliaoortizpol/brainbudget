@@ -2,13 +2,13 @@
 import argparse
 import json
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 
 import finances
 import flow
 import runtime as rt
+import isolation
 
 
 def check(config, sandbox=False):
@@ -32,28 +32,8 @@ def check(config, sandbox=False):
             report['native_config'][role] = {'accepted_to_schema_validation': 'Failed to read output schema file' in text,
                                              'host_access_warning': 'Access is denied' in text or 'failed to open state db' in text}
         if sandbox:
-            denied = directory / 'canonical-source-probe.txt'
-            program = '''import json, pathlib, sys
-scratch = pathlib.Path.cwd() / 'scratch-probe.txt'
-scratch.write_text('synthetic probe')
-denied = False
-try:
-    pathlib.Path(sys.argv[1]).write_text('synthetic unexpected write')
-except PermissionError:
-    denied = True
-print(json.dumps({'scratch_writable': scratch.exists(), 'source_write_denied': denied}))
-'''
-            args = [config['codex'], 'sandbox', '--permission-profile', ':workspace', '-C', str(scratch),
-                    '-c', 'sandbox_workspace_write.network_access=false', '-c', 'sandbox_workspace_write.writable_roots=[]',
-                    '--', sys.executable, '-c', program, str(denied)]
-            result = subprocess.run(args, capture_output=True, text=True, encoding='utf-8', errors='replace', env=rt.clean_env(scratch, config['node']), timeout=60)
-            records = []
-            for line in result.stdout.splitlines():
-                try:
-                    records.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
-            report['sandbox'] = records[-1] if records else {'validated': False, 'exit_code': result.returncode, 'next_action': 'Inspect native Windows sandbox setup; no raw diagnostic output copied'}
+            report['sandbox'] = isolation.probe(config)
+            report['read_isolation'] = 'synthetic filesystem boundary passed' if report['sandbox']['passed'] else 'failed'
     flow.write(root / 'cli-validation.json', report)
     return report
 
