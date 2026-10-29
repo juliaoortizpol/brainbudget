@@ -16,12 +16,14 @@ Related frontend/backend PR (or not applicable):
 ## Independent code review
 <!-- Reviewer completes this section; developer leaves it pending. -->
 Verdict: Pending / Pass / Changes requested
-Reviewed commit:
+Reviewed frontend/backend commits:
+Role session / requirements hash:
 Findings:
 
 ## QA report
 <!-- QA completes this section after testing a runnable build. -->
 Verdict: Pending / PASS / PASS WITH FOLLOW-UPS / FAIL / BLOCKED
+Requirements version/hash / QA session:
 Tested frontend commit:
 Tested backend commit:
 Environment / build URL / browser / viewport:

@@ -1,0 +1,13 @@
+{
+  "commits": {
+    "frontend": "REPLACE_WITH_EXACT_COMMIT",
+    "backend": "REPLACE_WITH_EXACT_COMMIT"
+  },
+  "data_mode": "synthetic",
+  "isolated": false,
+  "readiness_verified": false,
+  "browser_ready": false,
+  "seed_reset_evidence": "PENDING: link actual seed/reset output from the isolated environment",
+  "environment": "PENDING: endpoints, build identity and database readiness evidence",
+  "verified_by": "PENDING"
+}

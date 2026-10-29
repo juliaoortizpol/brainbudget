@@ -18,3 +18,7 @@ npm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local orchestration artifacts
+__pycache__/
+.finances-host.local.json

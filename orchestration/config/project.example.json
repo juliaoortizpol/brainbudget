@@ -1,0 +1,29 @@
+{
+  "repositories": {
+    "frontend": {
+      "path": "../chillbudget"
+    },
+    "backend": {
+      "path": "."
+    }
+  },
+  "state_root": "../.finances-runs",
+  "node": "REPLACE_WITH_ABSOLUTE_NODE_24_EXECUTABLE",
+  "codex": "codex",
+  "security": {
+    "isolated_test_host": false,
+    "sandbox_probe_passed": false
+  },
+  "trello": {
+    "board_id": "",
+    "lists": {
+      "Backlog": "",
+      "Ready": "",
+      "In Development": "",
+      "Code Review": "",
+      "QA Testing": "",
+      "Your Approval": "",
+      "Done": ""
+    }
+  }
+}

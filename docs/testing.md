@@ -10,6 +10,7 @@ check, not a successful test. Review lockfile changes deliberately.
 - Types (includes unit/e2e TypeScript): npx --no-install tsc --noEmit --incremental false -p tsconfig.json
 - Unit suite: npm test -- --ci --runInBand
 - Build: npm run build
+- Controller: python3 -m unittest discover -s orchestration/tests -v (Python 3.12+)
 
 The unit suite uses Jest/ts-jest and @/ module mapping configured in package.json.
 npm run lint auto-fixes files; CI deliberately invokes ESLint without --fix.
@@ -21,7 +22,9 @@ Do not run root test-auth.js/test-accounts.js against unknown data stores.
 
 ## Required checks rollout
 .github/workflows/ci.yml runs on every PR, push to master and manual dispatch.
-Its backend-required job fails if any matrix check fails or is cancelled.
+Its backend-required job fails if any matrix check or the controller regression job
+fails or is cancelled. Controller tests use synthetic fixtures and mocked brokers;
+they do not start a model session, feature ticket, database or external service.
 No continue-on-error, silent missing-script success or path-based workflow skips.
 Runtime tests needing credentials/data stay outside this initial gate.
 
