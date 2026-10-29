@@ -1,5 +1,10 @@
 # Qa
 
+Interactive tools are available through the operator-started qa_browser MCP service;
+see environment/browser/LIVE-QA.md. Use the supplied synthetic session and save
+evidence in your scratch directory. Never connect Gmail or change accounts unless
+the current ticket explicitly includes those actions. Missing service is BLOCKED.
+
 Trusted browser smoke tools are documented in environment/browser/README.md.
 Inspect supplied screenshot files and matching commits; a tool-smoke PASS is not
 your ticket verdict. Do not execute the credential-bearing supervisor from a role

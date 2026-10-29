@@ -104,6 +104,17 @@ def role_command(config, state, role, folder, run_id, sources):
         'shell_environment_policy.inherit': 'none',
         'shell_environment_policy.set': env,
     }
+    if role == 'qa':
+        settings.update({
+            'mcp_servers.qa_browser.url': 'http://localhost:15174/mcp',
+            'mcp_servers.qa_browser.required': True,
+            'mcp_servers.qa_browser.enabled_tools': ['browser_navigate', 'browser_snapshot',
+                'browser_click', 'browser_type', 'browser_select_option',
+                'browser_press_key', 'browser_wait_for', 'browser_resize',
+                'browser_take_screenshot', 'browser_close'],
+        })
+        for tool in settings['mcp_servers.qa_browser.enabled_tools']:
+            settings['mcp_servers.qa_browser.tools.' + tool + '.approval_mode'] = 'approve'
     args += isolation.overrides(settings)
     args += ['-']
     shared = {r: str(Path(path) / 'AGENTS.md') for r, path in sources.items()}

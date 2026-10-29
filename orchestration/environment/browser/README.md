@@ -1,5 +1,9 @@
 # Browser QA tools
 
+For direct QA-agent browser access, use [the supervised MCP service](LIVE-QA.md).
+The fixed smoke runner below remains useful for deterministic readiness checks;
+its limitations about interactive tools apply to that runner, not the new service.
+
 Run from the backend checkout using Node 24:
 
 ```powershell
