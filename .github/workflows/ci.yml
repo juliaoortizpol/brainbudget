@@ -42,6 +42,7 @@ jobs:
         run: |
           npm test -- --ci --runInBand
           node --test orchestration/environment/qa.test.cjs
+          node --test orchestration/environment/browser/smoke.test.cjs
       - name: build
         if: matrix.check == 'build'
         run: npm run build

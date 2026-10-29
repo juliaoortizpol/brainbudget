@@ -32,7 +32,9 @@ async function wait(url) {
   }
   throw Error('Readiness timeout');
 }
-async function main(smoke) {
+async function main(mode) {
+  if (!['smoke', 'serve', 'browser-smoke'].includes(mode)) throw Error('Expected smoke, serve or browser-smoke');
+  const smoke = mode !== 'serve';
   fs.mkdirSync(qa.STATE, { recursive: true });
   const lock = path.join(qa.STATE, 'server.lock');
   const fd = fs.openSync(lock, 'wx'); fs.writeSync(fd, String(process.pid)); fs.closeSync(fd);
@@ -73,9 +75,18 @@ async function main(smoke) {
       checks: ['health', 'frontend HTTP', 'synthetic login', 'database accounts read', 'other-user denied', 'deleted account excluded'],
       mode: smoke ? 'smoke-stops-servers' : 'serve-until-interrupted',
       limitations: ['No browser QA yet', 'Shared dev credential; database-scoped user still required', 'No served-build attestation beyond this supervised local build'] };
+    if (mode === 'browser-smoke') {
+      stage = 'browser smoke';
+      const result = await require('./browser/smoke.cjs').run({ state: qa.STATE, password: secrets.password, commits: report.commits });
+      report.browser_report = result.reportPath;
+      report.browser_ready = result.report.verdict === 'PASS';
+      report.limitations[0] = 'Browser tool smoke only; independent ticket QA still required';
+      fs.writeFileSync(path.join(qa.STATE, 'readiness.json'), JSON.stringify(report, null, 2));
+      if (!report.browser_ready) throw Error('Browser smoke failed');
+    }
     fs.writeFileSync(path.join(qa.STATE, 'readiness.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report));
     if (!smoke) await new Promise(resolve => { process.once('SIGINT', resolve); process.once('SIGTERM', resolve); children.forEach(c => c.once('exit', resolve)); });
   } finally { stop(); fs.unlinkSync(lock); }
 }
-if (require.main === module) main(process.argv[2] === 'smoke').catch(e => { stop(); console.error(JSON.stringify({ failed: true, stage, errorType: e.name, childErrors: children.map(c => c.diagnostic || null) })); process.exitCode = 1; });
+if (require.main === module) main(process.argv[2]).catch(e => { stop(); console.error(JSON.stringify({ failed: true, stage, errorType: e.name, childErrors: children.map(c => c.diagnostic || null) })); process.exitCode = 1; });

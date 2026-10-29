@@ -1,5 +1,10 @@
 # qa-evidence
 
+For operator-supervised local browser evidence, see
+[browser tools](../environment/browser/README.md). Transfer sanitized evidence
+into the assigned QA scratch and verify commit identities and image hashes before
+use. The fixed smoke does not provision interactive tools in a restricted session.
+
 1. Require an independent Reviewer PASS and current pinned commits. Confirm an isolated MongoDB, guarded synthetic seed/reset, matching application builds and service readiness. A /health response is process liveness, not proof of database/integration readiness.
 2. Provision browser/API tools in the QA environment; the restricted default CLI does not automatically inherit the desktop chat browser or connectors. If missing, report BLOCKED with owner and next action.
 3. Test every acceptance id; exercise relevant successful, empty, loading, validation, error and responsive states. Distinguish mocked data from real frontend/backend requests. Preserve field/operator/source and keyword/value semantics.
