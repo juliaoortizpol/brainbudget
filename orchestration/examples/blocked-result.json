@@ -1,0 +1,27 @@
+{
+  "role": "qa",
+  "run_id": "RUNNER_SUPPLIES_RUN_ID",
+  "session_id": "runner-stamps-this",
+  "requirements_hash": "RUNNER_SUPPLIES_REQUIREMENTS_HASH",
+  "commits": {
+    "frontend": "REPLACE_WITH_EXACT_COMMIT",
+    "backend": "REPLACE_WITH_EXACT_COMMIT"
+  },
+  "verdict": "BLOCKED",
+  "summary": "Example only: browser access is unavailable",
+  "limitations": ["No behavioral QA was completed"],
+  "evidence": [],
+  "acceptance_results": [
+    {"id": "AC1", "result": "not-tested", "evidence": "Browser unavailable"}
+  ],
+  "findings": [],
+  "environment": "Not provisioned",
+  "integration": "not-tested",
+  "screenshots": [],
+  "screenshot_not_applicable": "Blocked before UI verification; screenshot evidence is still required before passing",
+  "blocker": {
+    "reason": "Browser unavailable in isolated QA session",
+    "owner": "Julio",
+    "next_action": "Provision and verify browser access, then launch a fresh QA session"
+  }
+}

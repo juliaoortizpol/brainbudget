@@ -1,0 +1,12 @@
+{
+  "ticket_id": "EXAMPLE-ONLY",
+  "kind": "final",
+  "requirements_hash": "COPY_FROM_STATUS",
+  "approved_by": "FILL_ONLY_AFTER_JULIO_APPROVES",
+  "decision": "pending",
+  "approved_at": "",
+  "commits": {
+    "frontend": "COPY_APPROVED_SHA",
+    "backend": "COPY_APPROVED_SHA"
+  }
+}

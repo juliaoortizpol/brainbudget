@@ -1,0 +1,27 @@
+{
+  "id": "EXAMPLE-ONLY",
+  "trello_card_id": "REPLACE",
+  "title": "Replace with your approved ticket",
+  "requirements_version": "1",
+  "goal": "Describe the observable outcome",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "expected": "State a testable behavior and edge cases"
+    }
+  ],
+  "include": "Explicit included scope",
+  "exclude": "Explicit excluded scope",
+  "execution_mode": "AI-owned",
+  "repositories": [
+    "frontend",
+    "backend"
+  ],
+  "context_paths": [
+    "src/features/budget",
+    "src/modules/budgets"
+  ],
+  "ui_changed": true,
+  "requires_integration": true,
+  "references": []
+}

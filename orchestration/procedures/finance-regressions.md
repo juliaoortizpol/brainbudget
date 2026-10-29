@@ -1,0 +1,7 @@
+# finance-regressions
+
+Backend: test cross-user denial as well as own-user success; retain soft-delete filtering. Test duplicate Gmail messages, parser/account matcher/persistence boundaries, manual assignments, ambiguous/no matches, active periods, expense/income and rule precedence. Inspect src/modules/budgets/budget-matching.service.ts, budgets.service.ts, transaction-mail-persistence.service.ts and their Jest suites.
+Frontend: compare requests with backend DTOs and serialized responses. Test keyword <-> value conversion without losing field/operator/source; loading/empty/failure states; keep React-free calculation engines separate from presentation.
+Money: check amounts, rounding, date boundaries, currency and duplicate imports when affected. Do not silently migrate money storage or financial semantics.
+Loan: use README assumptions and an independent PMT calculation: P=626000, nominal APR=16.95%, monthly 72 installments => payment 13908.618742377907 before rounding; zero interest P=1200/12 =>100. Check extra principal versus charges, final caps, monthly/biweekly/weekly dates, leap/month end and invalid/extreme inputs. Existing tests are evidence, not a substitute for independent examples.
+Retirement: effective annual return converts with (1+r)^(1/12)-1; month-end contributions. Independent zero-return example: 1000 initial + 100/month for 12 months =>2200; check timing, annual increases, inflation, negative return and invalid/extreme bounds. Never replace an independent reference with the same implementation under test.

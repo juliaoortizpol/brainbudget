@@ -44,14 +44,28 @@ jobs:
         if: matrix.check == 'build'
         run: npm run build
 
+  orchestration:
+    name: backend-orchestration
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require Python 3.12 or newer
+        run: python3 -c "import sys; assert sys.version_info >= (3, 12)"
+      - name: Controller regression tests (no services or model calls)
+        run: python3 -m unittest discover -s orchestration/tests -v
+
   required:
     name: backend-required
     if: always()
-    needs: checks
+    needs: [checks, orchestration]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Require every check to pass
         env:
           CHECK_RESULT: ${{ needs.checks.result }}
-        run: test "$CHECK_RESULT" = success
+          ORCHESTRATION_RESULT: ${{ needs.orchestration.result }}
+        run: test "$CHECK_RESULT" = success && test "$ORCHESTRATION_RESULT" = success

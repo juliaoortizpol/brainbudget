@@ -1,0 +1,35 @@
+# Role, context and permissions matrix
+
+The launcher uses installed Codex CLI flags/config keys, not invented `agents.*` fields or a paid API. Native key files are in config/*.toml. The Python launcher supplies their equivalent CLI overrides plus role instructions and paths. It does not install global profiles, alter user config, change models, enable connectors or grant permissions.
+
+| Role | Fresh initial context | Requested technical controls | Advisory responsibilities |
+| --- | --- | --- | --- |
+| Developer | Own instructions, approved ticket, assigned isolated checkouts, shared instructions and targeted source pointers | workspace-write; only assigned private checkout roots plus scratch writable; approval_policy=never; shell network off; sanitized child environment | Implement agreed scope, meaningful tests/docs, no merge/deploy/admin/production/status changes. PR publication goes through trusted host broker. |
+| Reviewer | Own instructions, ticket, immutable exact-commit source snapshots, structured implementation handoff and CI | workspace-write scratch only; source snapshots outside writable roots, no .git/.env or project tool config; source hash checked after run | Independent diff/surrounding-code inspection; scratch experiments allowed; no source fixes or implementation pushes. |
+| QA | Own instructions, ticket, reviewed commits and operator-recorded synthetic environment manifest | Same scratch-only policy; evidence paths must exist inside scratch; no inherited production/test-service credentials | Browser/API behavior, captions/reproduction, real-vs-mocked distinction; no source fixes or production. Missing browser/environment is BLOCKED. |
+| Orchestrator role | Own instructions, ticket and structured progress/results | Scratch only; no writable application source or broker credentials | Recommend next action; do not implement or override verdicts. |
+| Trusted controller/broker | Versioned scripts plus structured state | Exclusive local lock, stage/commit/CI/result gates, one active ticket, atomic state, bounded attempts, remote readback | Human-operated with separate scoped GitHub/Trello credentials. This host process has ordinary OS privileges; it is the trust boundary. |
+
+## What is actually enforced
+
+The controller deterministically rejects stale requirements/commits, dirty Developer checkouts, session reuse, missing criteria/evidence, missing screenshots, missing real integration when required, unverified minor follow-ups, unmerged PRs and missing explicit final approval. It checks exact-head CI via GitHub API rather than accepting a model's claim. It never contains a merge/deploy/protection-write command. Reviewer/QA source snapshots are hash-checked after execution. State and approval files are outside role writable roots.
+
+`codex exec --ephemeral --ignore-user-config` starts fresh without resuming/forking prior chats or loading the user config. CLI overrides set never-approve, writable roots, shell environment and shell-network policy. These are supported settings; **a launch request alone is not proof that the host sandbox enforced them**. Validate write-denial, credential/tool inventory and network policy on the intended host before setting sandbox_probe_passed. Machine-managed configuration can still apply.
+
+Secret-bearing environment variables (including broker tokens, database/OAuth secrets and API keys) are not inherited by roles. Authentication for the Codex host itself still uses the user's existing ChatGPT login. Environment stripping does **not** hide files, OS keyrings, credential helpers, saved connectors or other services from a process with broad read access. Read-only source also does not stop copying it into scratch. Snapshot hash checks detect canonical changes; they do not prove that a tested external build matches the claimed commit.
+
+## Pending hard isolation — live launch fails closed by default
+
+Use a dedicated non-production OS account/container/VM with only the assigned source and synthetic artifacts readable; exclude production secrets, mail, databases, credentials and broad service mounts. Provision only the required tools and test endpoints. Restrict service tokens outside the role process. Validate that managed settings/tools do not expand role access. A reviewer needs writable dependency/test scratch while canonical source stays read-only; a QA runtime needs only its synthetic browser/API access. A separate role context alone supplies none of this.
+
+Local host config defaults `isolated_test_host=false` and `sandbox_probe_passed=false`. The controller refuses `launch --execute` until the operator has validated these controls. These switches are **operator attestations, not automatic OS isolation or permission grants**. This setup does not silently set them true. The restricted default CLI has no provisioned browser/remote service tool; QA remains pending until one is deliberately configured. Pair/Human modes do not auto-launch a Developer; use a fresh human-led session with the same packet/gates (the human-handoff command records Julio-attested session identity instead of claiming a CLI-verified session).
+
+No privilege/credential flow is created to make a pending role appear operational. Master protection is independently needed because someone with normal repository write access can bypass a local script. Final approval identity is an operator assertion, not cryptographic authentication. Treat scripts/state/config as trusted only after human review; protect them from application role writes.
+
+## Broker and retry limits
+
+Only the controller reads optional FINANCES_GITHUB_TOKEN / FINANCES_TRELLO_TOKEN. Use least-privilege tokens on the trusted host; never put them in JSON/TOML, tickets, CLI arguments, reports or role environments. GitHub public reads can work without a token; API rate limits/access failures stop progress. Trello accepts a separately provisioned scoped bearer credential. A desktop plugin connection is not automatically exported to a CLI process.
+
+One state root and one controller instance are required across both repositories. The filesystem lock is not a distributed lock. Stable markers plus GET-before-PUT/create reconciliation prevent duplicate work from interrupted local retries; they cannot promise distributed exactly-once writes if another host or person concurrently creates equivalent cards. Potential duplicate titles stop creation for operator selection. Do not remove a lock or mark an interrupted role stopped until its recorded PID/process tree is confirmed gone. Then archive the diagnostic state and record recovery; never automatically loop past three attempts.
+
+Sources: [Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference), [non-interactive execution](https://learn.chatgpt.com/docs/non-interactive-mode), and installed `codex exec --help` (0.165.0-alpha.1.2).
