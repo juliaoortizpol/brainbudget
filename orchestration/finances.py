@@ -15,6 +15,7 @@ from pathlib import Path
 
 import flow
 import runtime as rt
+import isolation
 
 
 def configuration(path):
@@ -85,32 +86,25 @@ def role_schema(state, role, run_id):
 def role_command(config, state, role, folder, run_id, sources):
     """Build argument arrays; JSON strings are TOML-compatible basic string literals."""
     policy = tomllib.loads((rt.BASE / 'config' / f'{role}.toml').read_text())
-    flow.require(policy['sandbox_mode'] == 'workspace-write' and policy['approval_policy'] == 'never', 'Unexpected role policy')
-    flow.require(policy['sandbox_workspace_write'] == {'network_access': False, 'writable_roots': [], 'exclude_slash_tmp': True, 'exclude_tmpdir_env_var': True}
-                 and policy['shell_environment_policy'] == {'inherit': 'none'}, 'Role policy must retain restricted defaults')
+    flow.require(policy == {'approval_policy': 'never', 'default_permissions': isolation.PROFILE,
+                           'windows': {'sandbox': 'mxc'}, 'shell_environment_policy': {'inherit': 'none'}},
+                 'Role policy must retain native MXC profile defaults without legacy sandbox settings')
     instructions = (rt.BASE / 'roles' / f'{role}.md').read_text(encoding='utf-8')
     instructions += '\n\n' + (rt.BASE / 'WORKFLOW.md').read_text(encoding='utf-8')
     env = rt.clean_env(folder / 'scratch', config['node'])
     args = [config['codex'], 'exec', '--ignore-user-config', '--strict-config', '--ephemeral',
-            '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', '--color', 'never',
+            '--skip-git-repo-check', '--json', '--color', 'never',
             '--cd', str(folder / 'scratch'), '--output-schema', str(folder / 'schema.json'),
             '--output-last-message', str(folder / 'raw-result.json')]
-    # Source is outside the writable cwd for Reviewer/QA/Orchestrator. Only Developer gets write roots.
-    roots = list(sources.values()) if role == 'developer' else []
+    # Root deny + explicit tool/source/scratch roots; legacy --sandbox would override this profile.
+    read_roots = [rt.BASE, folder]
     settings = {
-        'approval_policy': policy['approval_policy'], 'developer_instructions': instructions,
-        'sandbox_workspace_write.network_access': False, 'sandbox_workspace_write.writable_roots': roots,
-        'sandbox_workspace_write.exclude_slash_tmp': True,
-        'sandbox_workspace_write.exclude_tmpdir_env_var': True,
+        **isolation.settings(config, role, folder / 'scratch', sources, read_roots),
+        'developer_instructions': instructions,
         'shell_environment_policy.inherit': 'none',
         'shell_environment_policy.set': env,
     }
-    for key, value in settings.items():
-        if isinstance(value, dict):
-            encoded = '{' + ', '.join(json.dumps(k) + ' = ' + json.dumps(v) for k, v in value.items()) + '}'
-        else:
-            encoded = json.dumps(value, ensure_ascii=True)
-        args += ['-c', key + '=' + encoded]
+    args += isolation.overrides(settings)
     args += ['-']
     shared = {r: str(Path(path) / 'AGENTS.md') for r, path in sources.items()}
     packet = {'role': role, 'run_id': run_id, 'requirements_hash': state['requirements_hash'],
@@ -156,13 +150,14 @@ def launch(config, state, role, path, execute=False):
     # Dry-run does not create a session, mutate state or snapshot source.
     sources = {r: str(dev_root(config, state) / r) for r in state['commits']}
     if not execute:
-        return {'role': role, 'stage': state['stage'], 'sandbox': 'workspace-write',
+        return {'role': role, 'stage': state['stage'], 'sandbox': 'mxc/' + isolation.PROFILE,
                 'sources_writable': role == 'developer', 'fresh_session': True,
                 'execute_requires': 'validated external isolation and per-role sandbox probe', 'commits': state['commits']}
     # This switch is an operator attestation, not a claim that Codex can enforce filesystem read isolation.
     security = config.get('security', {})
     flow.require(security.get('isolated_test_host') and security.get('sandbox_probe_passed'),
                  'Live role launch pending: validate an isolated, credential-limited host and sandbox first; see PERMISSIONS.md')
+    isolation.validate_receipt(config)
     if role != 'orchestrator':
         flow.require(current_heads(config, state) == state['commits'], 'Pin current clean commits first')
     folder.mkdir(parents=True)
@@ -248,6 +243,11 @@ def doctor(config):
     checks['node_version'] = rt.command([config['node'], '--version'])
     help_text = rt.command([config['codex'], 'exec', '--help'])
     checks['supported_cli'] = all(flag in help_text for flag in ['--ignore-user-config', '--ephemeral', '--strict-config', '--output-schema', '--sandbox', '--json'])
+    try:
+        isolation.validate_receipt(config)
+        checks['workspace_isolation'] = 'Native MXC filesystem receipt valid (24-hour lifetime)'
+    except (flow.GateError, OSError, KeyError, ValueError):
+        checks['workspace_isolation'] = 'Missing/stale/failed: run orchestration/isolation.py --config FILE'
     if not checks['node_version'].startswith('v24.'):
         checks['pending'].append('Select Node 24')
     for key in ['isolated_test_host', 'sandbox_probe_passed']:

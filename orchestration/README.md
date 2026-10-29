@@ -24,10 +24,13 @@ Commands below use `python` as your Python 3.12+ executable; replace it with the
 
 ```powershell
 python orchestration/finances.py --config ../.finances-host.local.json doctor
+python orchestration/isolation.py --config ../.finances-host.local.json
 python -m unittest discover -s orchestration/tests -v
 ```
 
 Doctor checks actual repository commits/cleanliness, runtime and supported CLI flags, and lists pending prerequisites. `config/*.toml` contains native Codex keys; `project.example.json` and ticket/result/state fields are **harness records**, not Codex configuration fields. The launcher converts only supported settings to `codex exec -c` arguments, always uses `--strict-config`, and does not select a model for you.
+
+The [native workspace profile](WORKSPACE-ISOLATION.md) is validated on this host. It denies unrelated filesystem reads, permits Developer source writes and gives other roles read-only source. A current 24-hour probe receipt is mandatory for live launch, in addition to the remaining host/tool/credential prerequisites. Git metadata stays read-only; a trusted operator checkpoints implementation commits. No global profile was installed.
 
 ## Start a ticket — after environment prerequisites are met
 

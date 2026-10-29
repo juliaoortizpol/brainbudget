@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import flow
 import finances
 import runtime as rt
+import isolation
 
 A, B = 'a' * 40, 'b' * 40
 
@@ -200,6 +201,50 @@ class GateTests(unittest.TestCase):
 
 
 class IsolationTests(unittest.TestCase):
+    def test_tool_roots_do_not_expand_direct_installations_to_parent_drives(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            with patch('isolation.sys.executable', str(root / 'python/python.exe')), patch('isolation.shutil.which', return_value=str(root / 'git/cmd/git.exe')):
+                roots = isolation.tool_roots({'node': str(root / 'node/node.exe')})
+                self.assertEqual(set(roots), {str(root / 'python'), str(root / 'node'), str(root / 'git')})
+                with self.assertRaises(flow.GateError):
+                    isolation.tool_roots({'node': str(Path.home() / 'node.exe')})
+
+    def test_profiles_deny_unrelated_paths_and_limit_role_source_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for role in flow.ROLES:
+                value = isolation.settings({'node': sys.executable}, role, root / 'scratch', {'frontend': root / 'source'}, [root / 'policy'])
+                fs = value['permissions.finances-isolated.filesystem']
+                self.assertEqual(fs[':root'], 'deny')
+                self.assertEqual(fs[str((root / 'scratch').resolve())], 'write')
+                self.assertEqual(fs[str((root / 'source').resolve())], 'write' if role == 'developer' else 'read')
+                self.assertEqual(fs[str((root / 'source/.env').resolve())], 'deny')
+                self.assertEqual(fs[str((root / 'source/.git').resolve())], 'read')
+                self.assertEqual(fs[str((root / 'policy').resolve())], 'read')
+                self.assertEqual(value['windows.sandbox'], 'mxc')
+                self.assertFalse(value['permissions.finances-isolated.network.enabled'])
+
+    def test_live_launch_requires_receipt_even_when_flags_are_true(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cfg = {'state_root': directory, 'security': {'isolated_test_host': True, 'sandbox_probe_passed': True}}
+            with patch('subprocess.Popen') as child, self.assertRaisesRegex(flow.GateError, 'isolation.py'):
+                finances.launch(cfg, state(), 'developer', Path(directory) / 'state.json', True)
+            child.assert_not_called()
+
+    def test_receipt_rejects_failed_stale_and_expired_validation(self):
+        with tempfile.TemporaryDirectory() as directory, patch('isolation.fingerprint', return_value='current'):
+            cfg = {'state_root': directory}
+            path = Path(directory) / 'setup-validation/workspace-isolation.json'
+            for value in [{'passed': False, 'fingerprint': 'current', 'at': flow.now()},
+                          {'passed': True, 'fingerprint': 'old', 'at': flow.now()},
+                          {'passed': True, 'fingerprint': 'current', 'at': '2020-01-01T00:00:00+00:00'}]:
+                flow.write(path, value)
+                with self.assertRaises(flow.GateError):
+                    isolation.validate_receipt(cfg)
+            flow.write(path, {'passed': True, 'fingerprint': 'current', 'at': flow.now()})
+            isolation.validate_receipt(cfg)
+
     def test_lock_prevents_concurrent_controller_and_survives_existing_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             with flow.lock(directory):
@@ -249,8 +294,12 @@ class IsolationTests(unittest.TestCase):
             args, prompt, env = finances.role_command(cfg, s, 'reviewer', folder, 'fresh-id', {'frontend': str(folder / 'sources/frontend')})
             self.assertIn('--ephemeral', args); self.assertIn('--ignore-user-config', args)
             self.assertNotIn('resume', args); self.assertNotIn('fork', args)
-            self.assertIn('sandbox_workspace_write.writable_roots=[]', args)
-            self.assertIn('sandbox_workspace_write.network_access=false', args)
+            self.assertNotIn('--sandbox', args)
+            self.assertIn('default_permissions="finances-isolated"', args)
+            self.assertIn('permissions.finances-isolated.network.enabled=false', args)
+            filesystem = next(arg for arg in args if arg.startswith('permissions.finances-isolated.filesystem='))
+            self.assertIn('\":root\" = \"deny\"', filesystem)
+            self.assertIn(json.dumps(str((folder / 'sources/frontend').resolve())) + ' = "read"', filesystem)
             self.assertNotIn('full_conversation', prompt)
 
     def test_path_traversal_in_ticket_state_is_rejected(self):
@@ -293,7 +342,7 @@ class IsolationTests(unittest.TestCase):
                         return json.dumps({'type': 'thread.started', 'thread_id': 'actual-cli-session'}), ''
                     def poll(self):
                         return 0
-                with patch('finances.current_heads', return_value=s['commits']), patch('runtime.snapshot', side_effect=snapshot), patch('runtime.git', return_value='synthetic patch'), patch('subprocess.Popen', Child):
+                with patch('isolation.validate_receipt'), patch('finances.current_heads', return_value=s['commits']), patch('runtime.snapshot', side_effect=snapshot), patch('runtime.git', return_value='synthetic patch'), patch('subprocess.Popen', Child):
                     if tamper:
                         with self.assertRaisesRegex(flow.GateError, 'modified'):
                             finances.launch(cfg, s, 'reviewer', root / 'state.json', True)

@@ -1,11 +1,8 @@
-# Native Codex keys verified against installed CLI 0.165.0-alpha.1.2.
-# The launcher supplies source/scratch paths and role instructions through CLI overrides.
+# Native permission profile; dynamic paths are supplied by the controller.
+# Do not add sandbox_mode, sandbox_workspace_write or --sandbox: they override profiles.
 approval_policy = "never"
-sandbox_mode = "workspace-write"
-[sandbox_workspace_write]
-network_access = false
-writable_roots = []
-exclude_slash_tmp = true
-exclude_tmpdir_env_var = true
+default_permissions = "finances-isolated"
+[windows]
+sandbox = "mxc"
 [shell_environment_policy]
 inherit = "none"
