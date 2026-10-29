@@ -1,6 +1,8 @@
 # Isolated QA environment prerequisites — pending
 
-Do not call QA operational until these have been exercised on the chosen isolated host. This setup creates no database, server, account or feature ticket.
+Update 2026-10-29: Julio approved a dedicated brainbudget_qa_synthetic database on the existing dev/QA instance configured in backend .env. Synthetic seed/reset and supervised local readiness are now available in [QA-OPERATIONS.md](QA-OPERATIONS.md). The remaining items below are still required before autonomous QA is operational, especially scoped database credentials, network/tool isolation and browser evidence.
+
+Do not call QA operational until these have been exercised on the chosen isolated host. The initial setup provisioned no services; the approved follow-up above creates only synthetic fixtures and temporary supervised QA servers.
 
 1. Provision an isolated non-production OS account/container/VM with only synthetic source/artifacts and explicitly scoped test service access. Verify the sandbox's scratch-write/source-write-denial/network policies and tool inventory. Keep production credentials, keyrings, cloud accounts, databases and mailboxes inaccessible. Then record the validated security attestations in the ignored host config.
 2. Install Node 24 + npm, Python 3.12+, Git, Codex with the existing authorized ChatGPT login, and an isolated MongoDB. No mongod or Docker executable was found on this machine's PATH. Do not substitute a production MONGODB_URI.
