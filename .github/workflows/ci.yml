@@ -39,7 +39,9 @@ jobs:
         run: npx --no-install tsc --noEmit --incremental false -p tsconfig.json
       - name: unit
         if: matrix.check == 'unit'
-        run: npm test -- --ci --runInBand
+        run: |
+          npm test -- --ci --runInBand
+          node --test orchestration/environment/qa.test.cjs
       - name: build
         if: matrix.check == 'build'
         run: npm run build
