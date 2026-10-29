@@ -6,6 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "verify:ci": "eslint \"{src,apps,libs,test}/**/*.ts\" && tsc --noEmit --incremental false -p tsconfig.json && jest --ci --runInBand && node --test orchestration/environment/qa.test.cjs orchestration/environment/browser/smoke.test.cjs && npm run build",
     "build": "nest build && tsc-alias -p tsconfig.build.json",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start --path tsconfig.dev.json",

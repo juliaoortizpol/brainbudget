@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 export default async ({ page }) => {
-  const secrets = JSON.parse(fs.readFileSync(process.env.FINANCES_QA_CREDENTIALS_FILE, 'utf8'));
+  const credentialsFile = process.env.FINANCES_QA_CREDENTIALS_FILE;
+  if (!credentialsFile) throw new Error('Synthetic QA credentials file is not configured');
+  const secrets = JSON.parse(fs.readFileSync(credentialsFile, 'utf8'));
   const response = await fetch('http://127.0.0.1:13000/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'qa1@example.test', password: secrets.password }) });
   if (!response.ok) throw new Error('Synthetic authentication failed');
   const { access_token } = await response.json();
