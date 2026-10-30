@@ -1,5 +1,10 @@
 # Bounded Developer sessions
 
+The [host coordinator bridge](HOST-COORDINATOR.md) now provides usage conversion,
+schedule receipt recording and wakeup revalidation commands. Its chat automation
+is configured paused; scheduling and telemetry calls are made by the trusted chat,
+not directly by Python. Unattended operation has not passed commissioning.
+
 Opt-in for an approved AI-owned ticket already In Development. No scheduler or
 account telemetry API is installed by this change. Existing security gates still
 apply. Each launch is one fresh session, never an automatic loop.

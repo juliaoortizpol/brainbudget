@@ -17,6 +17,7 @@ import flow
 import runtime as rt
 import isolation
 import subtasks
+import usage_bridge
 
 
 def configuration(path):
@@ -309,6 +310,13 @@ def main(argv=None):
     parser.add_argument('--ticket-id')
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('doctor')
+    usage_export = commands.add_parser('usage-export')
+    usage_export.add_argument('--input', required=True)
+    usage_export.add_argument('--observed-at', required=True)
+    usage_export.add_argument('--output', required=True)
+    commands.add_parser('usage-intent')
+    receipt = commands.add_parser('usage-confirm'); receipt.add_argument('--receipt', required=True)
+    resume = commands.add_parser('usage-resume-plan'); resume.add_argument('--usage', required=True); resume.add_argument('--estimate-percent', required=True, type=float)
     init = commands.add_parser('init'); init.add_argument('--ticket', required=True)
     commands.add_parser('status')
     for name in ['ready', 'complete']:
@@ -334,6 +342,13 @@ def main(argv=None):
     resolve = commands.add_parser('resolve-blockers'); resolve.add_argument('--decision', required=True)
     args = parser.parse_args(argv)
     config = configuration(args.config)
+    if args.command == 'usage-export':
+        snapshot = usage_bridge.normalize(flow.read(args.input), args.observed_at)
+        target = Path(args.output).resolve()
+        flow.require(target.is_relative_to(Path(config['state_root']).resolve()), 'Write usage only under controller state root')
+        flow.require(not target.exists(), 'Usage snapshot already exists; use a new observation file')
+        flow.write(target, snapshot)
+        return {'snapshot': str(target)}
     if args.command == 'doctor':
         return doctor(config)
     if args.command == 'init':
@@ -353,6 +368,14 @@ def main(argv=None):
         state = flow.read(path)
         if args.command == 'ready':
             flow.approve_ready(state, flow.read(args.approval))
+        elif args.command == 'usage-intent':
+            return {'intent_key': usage_bridge.intent(state), 'wait': state['usage_wait']}
+        elif args.command == 'usage-confirm':
+            usage_bridge.confirm(state, flow.read(args.receipt))
+        elif args.command == 'usage-resume-plan':
+            only_one(config, state)
+            flow.require(current_heads(config, state) == state['commits'], 'Deferred checkouts changed; inspect before resume')
+            return usage_bridge.resume_plan(state, flow.read(args.usage), args.estimate_percent)
         elif args.command == 'prepare':
             flow.require(state['stage'] in ['Ready', 'In Development'], 'Prepare only approved scope')
             only_one(config, state)
