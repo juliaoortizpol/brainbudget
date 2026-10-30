@@ -1,5 +1,9 @@
 # Finances agent setup
 
+For large features, use [bounded Developer subtasks](DEVELOPER-SUBTASKS.md) to
+record handoffs and check fresh usage before each continuation. This is opt-in;
+automatic telemetry and scheduled wakeups are not yet connected.
+
 This is a small, dependency-free Python controller around the installed Codex CLI. It prepares Developer, Reviewer, QA and Orchestrator contexts, pins cross-repository evidence, checks gates and brokers Trello updates. It adds no application feature, paid API dependency or custom model runtime. No feature ticket is started by installation or doctor.
 
 Read [WORKFLOW.md](WORKFLOW.md), the single shared workflow policy, [PERMISSIONS.md](PERMISSIONS.md), and [VALIDATION.md](VALIDATION.md) before enabling execution. Technical repository boundaries remain in each AGENTS.md. Short procedures live in procedures/; they are not installable global skills and do not replace enforced permissions.

@@ -160,6 +160,9 @@ def revise(state, ticket):
     require(not any(r['status'] == 'running' for r in state['runs'].values()), 'Cannot revise a running role')
     require(ticket['requirements_version'] != state['ticket']['requirements_version'], 'Increment requirements_version')
     event(state, 'requirements-revised', previous=state['requirements_hash'])
+    if state.get('development_plan'):
+        state.setdefault('development_plan_history', []).append(state.pop('development_plan'))
+    state.pop('usage_wait', None)
     state.update(ticket=ticket, requirements_hash=digest(ticket), results={}, ci={}, verification={}, qa_environment=None, approval=None)
     move(state, 'Backlog')
 
@@ -249,6 +252,8 @@ def advance(state):
     if stage == 'Ready':
         move(state, 'In Development')
     elif stage == 'In Development':
+        if state.get('development_plan'):
+            require(state['development_plan']['requirements_hash'] == state['requirements_hash'] and all(u['status'] == 'done' for u in state['development_plan']['units']), 'Complete all Developer subtasks before review')
         passing(state, 'developer', ['READY'])
         require(set(state['verification']) == set(state['commits']), 'Run deterministic verification for all affected repos')
         require(set(state['ci']) == set(state['commits']), 'Verify passing CI for all affected repos')
