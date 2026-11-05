@@ -16,7 +16,7 @@ export class CreateTransactionDto {
 
   @IsMongoId()
   @IsOptional()
-  budgetItemId?: string;
+  budgetItemId?: string | null;
 
   @IsString()
   @IsNotEmpty()
@@ -44,8 +44,8 @@ export class CreateTransactionDto {
   notes?: string;
 
   @IsEnum(['matched', 'needs_review', 'manual'])
-  @IsNotEmpty()
-  matchingStatus!: 'matched' | 'needs_review' | 'manual';
+  @IsOptional()
+  matchingStatus?: 'matched' | 'needs_review' | 'manual';
 
   @IsEnum(['rule', 'suggestion', 'manual'])
   @IsOptional()

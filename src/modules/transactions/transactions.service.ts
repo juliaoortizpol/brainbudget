@@ -1,30 +1,81 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Transaction, TransactionDocument } from './schemas/transaction.schema';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { GetTransactionsFilterDto } from './dto/get-transactions-filter.dto';
+import { Budget, BudgetDocument } from '../budgets/schemas/budget.schema';
+import {
+  BudgetItem,
+  BudgetItemDocument,
+} from '../budgets/schemas/budget-item.schema';
 
 @Injectable()
 export class TransactionsService {
   constructor(
     @InjectModel(Transaction.name)
     private transactionModel: Model<TransactionDocument>,
+    @InjectModel(Budget.name) private budgets: Model<BudgetDocument>,
+    @InjectModel(BudgetItem.name) private items: Model<BudgetItemDocument>,
   ) {}
+
+  private async assignment(userId: string, dto: UpdateTransactionDto) {
+    const assigned = typeof dto.budgetItemId === 'string';
+    const status = assigned ? 'manual' : 'needs_review';
+    if (
+      (dto.matchingStatus !== undefined && dto.matchingStatus !== status) ||
+      (dto.matchingSource !== undefined &&
+        (!assigned || dto.matchingSource !== 'manual')) ||
+      dto.matchingConfidence !== undefined
+    ) {
+      throw new BadRequestException(
+        'Matching metadata must agree with assignment',
+      );
+    }
+    if (assigned) {
+      const item = await this.items
+        .findOne({
+          _id: new Types.ObjectId(dto.budgetItemId!),
+          userId: new Types.ObjectId(userId),
+          isDeleted: false,
+        })
+        .exec();
+      const budget =
+        item &&
+        (await this.budgets
+          .findOne({
+            _id: item.budgetId,
+            userId: new Types.ObjectId(userId),
+            isDeleted: false,
+          })
+          .exec());
+      if (!budget) throw new BadRequestException('Budget item is unavailable');
+    }
+    return {
+      budgetItemId: assigned
+        ? new Types.ObjectId(dto.budgetItemId!)
+        : undefined,
+      matchingStatus: status,
+      matchingSource: assigned ? 'manual' : undefined,
+    };
+  }
 
   async create(
     userId: string,
     createTransactionDto: CreateTransactionDto,
   ): Promise<Transaction> {
+    const assignment = await this.assignment(userId, createTransactionDto);
     const createdTransaction = new this.transactionModel({
       ...createTransactionDto,
+      ...assignment,
       userId: new Types.ObjectId(userId),
       accountId: createTransactionDto.accountId
         ? new Types.ObjectId(createTransactionDto.accountId)
-        : undefined,
-      budgetItemId: createTransactionDto.budgetItemId
-        ? new Types.ObjectId(createTransactionDto.budgetItemId)
         : undefined,
     });
     return createdTransaction.save();
@@ -111,9 +162,24 @@ export class TransactionsService {
     updateTransactionDto: UpdateTransactionDto,
   ): Promise<Transaction> {
     const updateData: Record<string, unknown> = { ...updateTransactionDto };
-    if (updateTransactionDto.budgetItemId) {
-      updateData.budgetItemId = new Types.ObjectId(
-        updateTransactionDto.budgetItemId,
+    const unset: Record<string, 1> = {};
+    if (updateTransactionDto.budgetItemId !== undefined) {
+      const assignment = await this.assignment(userId, updateTransactionDto);
+      Object.assign(updateData, assignment);
+      unset.matchingConfidence = 1;
+      for (const key of ['budgetItemId', 'matchingSource']) {
+        if (updateData[key] === undefined) {
+          delete updateData[key];
+          unset[key] = 1;
+        }
+      }
+    } else if (
+      updateTransactionDto.matchingStatus !== undefined ||
+      updateTransactionDto.matchingSource !== undefined ||
+      updateTransactionDto.matchingConfidence !== undefined
+    ) {
+      throw new BadRequestException(
+        'Matching metadata requires an assignment request',
       );
     }
     if (updateTransactionDto.accountId) {
@@ -123,7 +189,10 @@ export class TransactionsService {
     const existingTransaction = await this.transactionModel
       .findOneAndUpdate(
         { _id: new Types.ObjectId(id), userId: new Types.ObjectId(userId) },
-        { $set: updateData },
+        {
+          $set: updateData,
+          ...(Object.keys(unset).length ? { $unset: unset } : {}),
+        },
         { new: true, runValidators: true },
       )
       .exec();
