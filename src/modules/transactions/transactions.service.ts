@@ -24,7 +24,60 @@ export class TransactionsService {
     @InjectModel(BudgetItem.name) private items: Model<BudgetItemDocument>,
   ) {}
 
-  private async assignment(userId: string, dto: UpdateTransactionDto) {
+  private async validateAssignment(
+    userId: string,
+    itemId: string,
+    type: string,
+    date: Date,
+  ) {
+    const item = await this.items
+      .findOne({
+        _id: new Types.ObjectId(itemId),
+        userId: new Types.ObjectId(userId),
+        isDeleted: false,
+      })
+      .exec();
+    const budget =
+      item &&
+      (await this.budgets
+        .findOne({
+          _id: item.budgetId,
+          userId: new Types.ObjectId(userId),
+          isDeleted: false,
+        })
+        .exec());
+    if (!item || !budget) {
+      throw new BadRequestException(
+        'Budget item is unavailable; choose another item',
+      );
+    }
+    if (budget.status !== 'active') {
+      throw new BadRequestException('Budget must be active for assignment');
+    }
+    if (item.type !== type) {
+      throw new BadRequestException(
+        'Budget item type must match transaction type',
+      );
+    }
+    const timestamp = new Date(date).getTime();
+    if (
+      !(
+        timestamp >= budget.startDate.getTime() &&
+        timestamp <= budget.endDate.getTime()
+      )
+    ) {
+      throw new BadRequestException(
+        'Transaction date must be within the budget period',
+      );
+    }
+  }
+
+  private async assignment(
+    userId: string,
+    dto: UpdateTransactionDto,
+    type: string,
+    date: Date,
+  ) {
     const assigned = typeof dto.budgetItemId === 'string';
     const status = assigned ? 'manual' : 'needs_review';
     if (
@@ -38,23 +91,7 @@ export class TransactionsService {
       );
     }
     if (assigned) {
-      const item = await this.items
-        .findOne({
-          _id: new Types.ObjectId(dto.budgetItemId!),
-          userId: new Types.ObjectId(userId),
-          isDeleted: false,
-        })
-        .exec();
-      const budget =
-        item &&
-        (await this.budgets
-          .findOne({
-            _id: item.budgetId,
-            userId: new Types.ObjectId(userId),
-            isDeleted: false,
-          })
-          .exec());
-      if (!budget) throw new BadRequestException('Budget item is unavailable');
+      await this.validateAssignment(userId, dto.budgetItemId!, type, date);
     }
     return {
       budgetItemId: assigned
@@ -69,7 +106,12 @@ export class TransactionsService {
     userId: string,
     createTransactionDto: CreateTransactionDto,
   ): Promise<Transaction> {
-    const assignment = await this.assignment(userId, createTransactionDto);
+    const assignment = await this.assignment(
+      userId,
+      createTransactionDto,
+      createTransactionDto.type,
+      createTransactionDto.date,
+    );
     const createdTransaction = new this.transactionModel({
       ...createTransactionDto,
       ...assignment,
@@ -163,8 +205,43 @@ export class TransactionsService {
   ): Promise<Transaction> {
     const updateData: Record<string, unknown> = { ...updateTransactionDto };
     const unset: Record<string, 1> = {};
+    const filter: Record<string, unknown> = {
+      _id: new Types.ObjectId(id),
+      userId: new Types.ObjectId(userId),
+    };
+    const checksAssignment =
+      typeof updateTransactionDto.budgetItemId === 'string' ||
+      (updateTransactionDto.budgetItemId === undefined &&
+        (updateTransactionDto.date !== undefined ||
+          updateTransactionDto.type !== undefined));
+    let current: Transaction | undefined;
+    if (checksAssignment) {
+      current = await this.findOne(id, userId);
+      // Validate and write against the same effective transaction values.
+      Object.assign(filter, {
+        date: current.date,
+        type: current.type,
+        budgetItemId: current.budgetItemId ?? null,
+      });
+      if (
+        updateTransactionDto.budgetItemId === undefined &&
+        current.budgetItemId
+      ) {
+        await this.validateAssignment(
+          userId,
+          current.budgetItemId.toString(),
+          updateTransactionDto.type ?? current.type,
+          updateTransactionDto.date ?? current.date,
+        );
+      }
+    }
     if (updateTransactionDto.budgetItemId !== undefined) {
-      const assignment = await this.assignment(userId, updateTransactionDto);
+      const assignment = await this.assignment(
+        userId,
+        updateTransactionDto,
+        updateTransactionDto.type ?? current?.type ?? '',
+        updateTransactionDto.date ?? current?.date ?? new Date(NaN),
+      );
       Object.assign(updateData, assignment);
       unset.matchingConfidence = 1;
       for (const key of ['budgetItemId', 'matchingSource']) {
@@ -188,7 +265,7 @@ export class TransactionsService {
 
     const existingTransaction = await this.transactionModel
       .findOneAndUpdate(
-        { _id: new Types.ObjectId(id), userId: new Types.ObjectId(userId) },
+        filter,
         {
           $set: updateData,
           ...(Object.keys(unset).length ? { $unset: unset } : {}),
@@ -198,6 +275,11 @@ export class TransactionsService {
       .exec();
 
     if (!existingTransaction) {
+      if (checksAssignment) {
+        throw new BadRequestException(
+          'Transaction changed during assignment validation; reload and retry',
+        );
+      }
       throw new NotFoundException(`Transaction #${id} not found`);
     }
 
