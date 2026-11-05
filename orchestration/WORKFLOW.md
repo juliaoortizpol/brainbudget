@@ -6,6 +6,13 @@ Backlog → Ready → In Development → Code Review → QA Testing → Your App
 
 Start Here holds board rules, ticket template and QA guide; it is not a ticket stage.
 
+Trello cards are user stories and labels represent epics. Related backend/frontend
+stories share the epic label, have testable acceptance criteria and link dependencies
+in both directions. Complete and verify the related backend story before starting
+frontend implementation. Draft stories stay in Backlog until Julio reviews and
+approves their scope. Prefer connector tools for Trello; when a necessary action
+requires browser/computer use, ask Julio to perform that step.
+
 | Stage | Entry requirement |
 | --- | --- |
 | Backlog | Ticket is being defined; no development permission implied. |

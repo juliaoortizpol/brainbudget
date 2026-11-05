@@ -29,15 +29,19 @@ describe('Transaction matching metadata', () => {
     ).resolves.toEqual(transaction);
   });
 
-  it('requires matchingStatus on creation', async () => {
-    const withoutStatus: Partial<typeof transaction> = { ...transaction };
-    delete withoutStatus.matchingStatus;
+  it('accepts the frontend create payload without matching metadata', async () => {
+    const withoutStatus = {
+      name: transaction.name,
+      amount: transaction.amount,
+      type: transaction.type,
+      date: transaction.date,
+    };
     await expect(
       pipe.transform(withoutStatus, {
         type: 'body',
         metatype: CreateTransactionDto,
       }),
-    ).rejects.toThrow();
+    ).resolves.toEqual(withoutStatus);
   });
 
   it('allows partial updates without matchingStatus', async () => {
