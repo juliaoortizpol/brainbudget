@@ -30,6 +30,10 @@ export class GetTransactionsFilterDto {
   type?: string;
 
   @IsOptional()
+  @IsEnum(['needs_review'])
+  matchingStatus?: 'needs_review';
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(1)
