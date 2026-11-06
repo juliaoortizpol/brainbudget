@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { QueryFilter, Model, Types } from 'mongoose';
 import { Transaction, TransactionDocument } from './schemas/transaction.schema';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -130,17 +130,14 @@ export class TransactionsService {
       startDate,
       endDate,
       type,
+      matchingStatus,
       page = 1,
       limit = 10,
     } = filterDto;
 
-    const query: {
-      userId: Types.ObjectId;
-      accountId?: Types.ObjectId;
-      budgetItemId?: Types.ObjectId;
-      type?: string;
-      date?: { $gte?: Date; $lte?: Date };
-    } = { userId: new Types.ObjectId(userId) };
+    const query: QueryFilter<Transaction> = {
+      userId: new Types.ObjectId(userId),
+    };
 
     if (accountId) {
       query.accountId = new Types.ObjectId(accountId);
@@ -150,6 +147,19 @@ export class TransactionsService {
     }
     if (type) {
       query.type = type;
+    }
+    if (matchingStatus === 'needs_review') {
+      // Query stored values before hydration can apply the schema default.
+      // Mongo equality to null includes missing fields as well as explicit null.
+      query.$and = [
+        { type: 'expense' },
+        {
+          $or: [
+            { matchingStatus: 'needs_review' },
+            { matchingStatus: null, budgetItemId: null },
+          ],
+        },
+      ];
     }
     if (startDate || endDate) {
       query.date = {};

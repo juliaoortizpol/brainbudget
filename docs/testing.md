@@ -43,6 +43,9 @@ Workflow files alone do NOT enable branch protection. Protection configuration
 is a separate admin step and is not claimed as active by this PR.
 
 ## QA
+Expense review query policy and the persisted synthetic API verification matrix
+are documented in [transaction review](transaction-review.md).
+
 Use docs/qa-reporting.md. For integrated testing, record both repositories' exact
 commits, isolated environment and synthetic data. Unit/build checks do not replace
 independent review, browser QA, authorization checks or financial correctness tests.
