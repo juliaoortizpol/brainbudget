@@ -31,8 +31,23 @@ describe('manual transaction assignments', () => {
   let items: { findOne: jest.Mock<unknown, [Record<string, unknown>]> };
   let budgets: { findOne: jest.Mock<unknown, [Record<string, unknown>]> };
   let service: TransactionsService;
+  let current: Record<string, unknown>;
+  let item: Record<string, unknown> | null;
+  let budget: Record<string, unknown> | null;
 
   beforeEach(() => {
+    saved = {};
+    current = {
+      ...payload,
+      date: new Date(payload.date),
+      budgetItemId: new Types.ObjectId(itemId),
+    };
+    item = { budgetId: new Types.ObjectId(), type: 'expense' };
+    budget = {
+      status: 'active',
+      startDate: new Date('2026-11-01T00:00:00Z'),
+      endDate: new Date('2026-11-30T00:00:00Z'),
+    };
     class TransactionModel {
       constructor(data: Record<string, unknown>) {
         saved = data;
@@ -40,6 +55,9 @@ describe('manual transaction assignments', () => {
       save() {
         return Promise.resolve(saved);
       }
+      static findOne = jest
+        .fn()
+        .mockImplementation(() => ({ exec: () => Promise.resolve(current) }));
       static findOneAndUpdate = jest.fn<
         unknown,
         [
@@ -52,13 +70,13 @@ describe('manual transaction assignments', () => {
     update.mockReturnValue({ exec: () => Promise.resolve({ _id: id }) });
     items = {
       findOne: jest.fn<unknown, [Record<string, unknown>]>().mockReturnValue({
-        exec: () => Promise.resolve({ budgetId: new Types.ObjectId() }),
+        exec: () => Promise.resolve(item),
       }),
     };
     budgets = {
       findOne: jest
         .fn<unknown, [Record<string, unknown>]>()
-        .mockReturnValue({ exec: () => Promise.resolve({}) }),
+        .mockReturnValue({ exec: () => Promise.resolve(budget) }),
     };
     service = new TransactionsService(
       TransactionModel as unknown as Model<TransactionDocument>,
@@ -169,7 +187,13 @@ describe('manual transaction assignments', () => {
     const accountId = new Types.ObjectId().toString();
     await service.update(id, userId, { accountId, budgetItemId: itemId });
     expect(update).toHaveBeenCalledWith(
-      { _id: new Types.ObjectId(id), userId: new Types.ObjectId(userId) },
+      {
+        _id: new Types.ObjectId(id),
+        userId: new Types.ObjectId(userId),
+        date: current.date,
+        type: current.type,
+        budgetItemId: current.budgetItemId,
+      },
       {
         $set: {
           accountId: new Types.ObjectId(accountId),
@@ -181,5 +205,186 @@ describe('manual transaction assignments', () => {
       },
       { new: true, runValidators: true },
     );
+  });
+
+  describe('eligibility', () => {
+    it.each(['create', 'update'] as const)(
+      '%s hides foreign, deleted and nonexistent item/parent references',
+      async (operation) => {
+        for (const target of ['item', 'budget']) {
+          for (const reason of ['foreign', 'deleted', 'missing']) {
+            const model = target === 'item' ? items : budgets;
+            const document = target === 'item' ? item : budget;
+            const candidate = {
+              ...document,
+              userId: new Types.ObjectId(
+                reason === 'foreign' ? undefined : userId,
+              ),
+              isDeleted: reason === 'deleted',
+            };
+            model.findOne.mockImplementation((query) => ({
+              exec: () =>
+                Promise.resolve(
+                  reason !== 'missing' &&
+                    String(query.userId) === String(candidate.userId) &&
+                    query.isDeleted === candidate.isDeleted
+                    ? candidate
+                    : null,
+                ),
+            }));
+            const request =
+              operation === 'create'
+                ? service.create(
+                    userId,
+                    plainToInstance(CreateTransactionDto, {
+                      ...payload,
+                      budgetItemId: itemId,
+                    }),
+                  )
+                : service.update(id, userId, { budgetItemId: itemId });
+            await expect(request).rejects.toThrow(
+              'Budget item is unavailable; choose another item',
+            );
+            expect(saved).toEqual({});
+            expect(update).not.toHaveBeenCalled();
+          }
+          modelReset();
+        }
+        function modelReset() {
+          items.findOne.mockReturnValue({ exec: () => Promise.resolve(item) });
+          budgets.findOne.mockReturnValue({
+            exec: () => Promise.resolve(budget),
+          });
+        }
+      },
+    );
+
+    it.each(['create', 'update'] as const)(
+      '%s rejects every ineligible reference before writing',
+      async (operation) => {
+        const eligibleItem = item;
+        const eligibleBudget = budget;
+        const cases = [
+          {
+            item: null,
+            budget: eligibleBudget,
+            message: 'Budget item is unavailable',
+          },
+          {
+            item: eligibleItem,
+            budget: null,
+            message: 'Budget item is unavailable',
+          },
+          ...['draft', 'closed'].map((status) => ({
+            item: eligibleItem,
+            budget: { ...eligibleBudget, status },
+            message: 'Budget must be active',
+          })),
+          {
+            item: { ...eligibleItem, type: 'income' },
+            budget: eligibleBudget,
+            message: 'Budget item type must match',
+          },
+          {
+            item: eligibleItem,
+            budget: { ...eligibleBudget, startDate: new Date('2026-11-02') },
+            message: 'Transaction date must be within',
+          },
+          {
+            item: eligibleItem,
+            budget: { ...eligibleBudget, endDate: new Date('2026-10-31') },
+            message: 'Transaction date must be within',
+          },
+        ];
+        for (const scenario of cases) {
+          item = scenario.item;
+          budget = scenario.budget;
+          const request =
+            operation === 'create'
+              ? service.create(
+                  userId,
+                  plainToInstance(CreateTransactionDto, {
+                    ...payload,
+                    budgetItemId: itemId,
+                  }),
+                )
+              : service.update(id, userId, { budgetItemId: itemId });
+          await expect(request).rejects.toThrow(scenario.message);
+          expect(saved).toEqual({});
+          expect(update).not.toHaveBeenCalled();
+        }
+      },
+    );
+
+    it.each(['type', 'date'] as const)(
+      'rejects incompatible retained-assignment %s edits without writes',
+      async (field) => {
+        const before = { ...current };
+        await expect(
+          service.update(
+            id,
+            userId,
+            field === 'type'
+              ? { type: 'income' }
+              : { date: new Date('2026-12-01') },
+          ),
+        ).rejects.toThrow(BadRequestException);
+        expect(current).toEqual(before);
+        expect(update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('validates the resulting date and type when reassigning', async () => {
+      item = { ...item, type: 'income' };
+      await service.update(id, userId, {
+        budgetItemId: itemId,
+        type: 'income',
+        date: new Date('2026-11-15'),
+      });
+      expect(update).toHaveBeenCalled();
+    });
+
+    it.each(['2026-11-01T00:00:00Z', '2026-11-30T00:00:00Z'])(
+      'preserves metadata for valid edits at inclusive bound %s',
+      async (date) => {
+        await service.update(id, userId, { date: new Date(date) });
+        expect(update.mock.calls[0][1]).toEqual({
+          $set: { date: new Date(date) },
+        });
+      },
+    );
+
+    it('allows clearing together with an incompatible date/type change', async () => {
+      await service.update(id, userId, {
+        budgetItemId: null,
+        type: 'income',
+        date: new Date('2027-01-01'),
+      });
+      expect(items.findOne).not.toHaveBeenCalled();
+      expect(update.mock.calls[0][1].$unset).toMatchObject({
+        budgetItemId: 1,
+        matchingSource: 1,
+        matchingConfidence: 1,
+      });
+    });
+
+    it('allows unassigned date/type edits', async () => {
+      delete current.budgetItemId;
+      await service.update(id, userId, { type: 'income' });
+      expect(items.findOne).not.toHaveBeenCalled();
+      expect(update.mock.calls[0][1]).toEqual({ $set: { type: 'income' } });
+    });
+
+    it('rejects a stale transaction snapshot instead of writing against unvalidated values', async () => {
+      update.mockReturnValue({ exec: () => Promise.resolve(null) });
+      await expect(
+        service.update(id, userId, { type: 'expense' }),
+      ).rejects.toThrow('reload and retry');
+      expect(update.mock.calls[0][0]).toMatchObject({
+        date: current.date,
+        type: current.type,
+        budgetItemId: current.budgetItemId,
+      });
+    });
   });
 });

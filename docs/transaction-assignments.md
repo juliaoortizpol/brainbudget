@@ -6,11 +6,26 @@ Omitted or null budgetItemId creates an unassigned needs_review transaction.
 An explicit item ID on POST or PATCH assigns/reassigns it with matchingStatus
 manual and matchingSource manual. The item and its parent budget must belong to
 the authenticated user and must not be soft deleted.
+The parent must be active (draft and closed budgets are ineligible), the item
+type must equal the resulting transaction type, and the resulting transaction
+date must fall within the parent's startDate/endDate, inclusive. These are exact
+timestamp comparisons, consistent with current matching; no full-day expansion
+or timezone reinterpretation is applied.
 
 PATCH /transactions/:id with `{"budgetItemId":null}` clears the assignment,
 sets needs_review and removes matchingSource and matchingConfidence. Omitting
 budgetItemId preserves assignment metadata on ordinary edits. A clear request
 does not prevent future automatic matching.
+Changing date or type while retaining an assignment revalidates that assignment
+using the effective values (existing values for omitted fields). Reassignment
+also uses effective values. Incompatible requests return HTTP 400 before any
+transaction write. Explicit clearing can accompany incompatible date/type edits.
+Unavailable, foreign and deleted references share a generic actionable error;
+owned live references report inactive budget, type mismatch or out-of-period
+date problems. Rejected requests leave the transaction unchanged.
+Eligibility-sensitive PATCH writes compare the read date, type and item reference
+with the persisted transaction. A concurrent change returns HTTP 400 asking the
+caller to reload and retry, rather than applying a stale validation result.
 
 Matching status/source are optional compatibility fields; supplied values must
 agree with the derived assignment. Client confidence and metadata-only PATCH
