@@ -8,7 +8,9 @@ import {
   IsNumber,
   IsBoolean,
   IsArray,
+  ValidateIf,
 } from 'class-validator';
+import { ValidMatchingRules } from './valid-matching-rules';
 import { Type } from 'class-transformer';
 import { BudgetItemMatchingRuleDto } from './budget-item-matching-rule.dto';
 
@@ -41,7 +43,8 @@ export class CreateBudgetItemDto {
   @IsOptional()
   alertEnabled?: boolean;
 
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
+  @ValidMatchingRules()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => BudgetItemMatchingRuleDto)
@@ -70,6 +73,7 @@ export class CreateBudgetDto {
   status!: string;
 
   @IsOptional()
+  @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateBudgetItemDto)
   items?: CreateBudgetItemDto[];

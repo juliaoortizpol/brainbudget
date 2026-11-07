@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Budget, BudgetDocument } from './schemas/budget.schema';
@@ -10,6 +14,7 @@ import {
 import { CreateBudgetDto, CreateBudgetItemDto } from './dto/create-budget.dto';
 import { UpdateBudgetItemDto } from './dto/update-budget-item.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
+import { matchingRulesError } from './matching-rule-validation';
 
 export type BudgetItemWithSpent = BudgetItem & {
   _id: Types.ObjectId;
@@ -35,6 +40,7 @@ export class BudgetsService {
     createBudgetDto: CreateBudgetDto,
   ): Promise<BudgetWithItems> {
     const { items, ...budgetData } = createBudgetDto;
+    this.validateItems(items);
     const userObjectId = new Types.ObjectId(userId);
 
     // Soft delete any existing active budgets for this user
@@ -144,6 +150,7 @@ export class BudgetsService {
     updateBudgetDto: UpdateBudgetDto,
   ): Promise<BudgetWithItems> {
     const { items, ...budgetData } = updateBudgetDto;
+    this.validateItems(items);
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(id);
 
@@ -230,6 +237,7 @@ export class BudgetsService {
     userId: string,
     createItemDto: CreateBudgetItemDto,
   ): Promise<BudgetItemDocument> {
+    this.validateRules(createItemDto.matchingRules);
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(budgetId);
 
@@ -254,6 +262,7 @@ export class BudgetsService {
     userId: string,
     updateDto: UpdateBudgetItemDto,
   ): Promise<BudgetItemDocument> {
+    this.validateRules(updateDto.matchingRules);
     const updates = Object.fromEntries(
       Object.entries(updateDto).filter(([, value]) => value !== undefined),
     );
@@ -275,6 +284,24 @@ export class BudgetsService {
     }
     return updatedItem;
   }
+  private validateRules(rules: unknown): void {
+    if (rules === undefined) return;
+    const error = matchingRulesError(rules);
+    if (error) throw new BadRequestException(error);
+  }
+
+  private validateItems(items: unknown): void {
+    if (items === undefined) return;
+    if (!Array.isArray(items))
+      throw new BadRequestException('items must be an array');
+    for (const item of items) {
+      if (!item || typeof item !== 'object') {
+        throw new BadRequestException('items must contain item objects');
+      }
+      this.validateRules((item as CreateBudgetItemDto).matchingRules);
+    }
+  }
+
   private async appendSpentToItems(
     budget: Budget,
     budgetItems: BudgetItemDocument[],

@@ -211,6 +211,24 @@ describe('BudgetMatchingService', () => {
     ).toMatchObject({ budgetItemId: winner._id, matchingStatus: 'matched' });
   });
 
+  it.each(['user', 'learned', 'suggested'])(
+    'requires review for equally specific %s rules in different categories in either order',
+    (source) => {
+      const items = [
+        candidate('uber eats', 'equals', source),
+        candidate(' UBER EATS! ', 'contains', source),
+      ];
+      for (const ordered of [items, [...items].reverse()]) {
+        expect(
+          match({ ...transaction(), name: 'Uber Eats' }, ordered),
+        ).toMatchObject({
+          matchingStatus: 'needs_review',
+          budgetItemId: undefined,
+        });
+      }
+    },
+  );
+
   it.each([
     { status: 'closed' },
     { isDeleted: true },
