@@ -6,7 +6,9 @@ import {
   ValidateNested,
   IsString,
   IsNotEmpty,
+  ValidateIf,
 } from 'class-validator';
+import { ValidMatchingRules } from './valid-matching-rules';
 import { Type } from 'class-transformer';
 import { BudgetItemMatchingRuleDto } from './budget-item-matching-rule.dto';
 
@@ -24,7 +26,8 @@ export class UpdateBudgetItemDto {
   @IsOptional()
   alertEnabled?: boolean;
 
-  @IsOptional()
+  @ValidateIf((_, value) => value !== undefined)
+  @ValidMatchingRules()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => BudgetItemMatchingRuleDto)

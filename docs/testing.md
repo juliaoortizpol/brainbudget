@@ -43,6 +43,9 @@ Workflow files alone do NOT enable branch protection. Protection configuration
 is a separate admin step and is not claimed as active by this PR.
 
 ## QA
+
+Budget rule validation and the pending persisted API matrix are documented in
+[budget matching rules](budget-matching-rules.md).
 Expense review query policy and the persisted synthetic API verification matrix
 are documented in [transaction review](transaction-review.md).
 

@@ -2,6 +2,7 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 import { User } from '@/modules/users/schemas/user.schema';
 import { Budget } from './budget.schema';
+import { matchingRulesError } from '../matching-rule-validation';
 import {
   BudgetItemMatchingRule,
   BudgetItemMatchingRuleSchema,
@@ -38,7 +39,15 @@ export class BudgetItem {
   @Prop()
   alertEnabled?: boolean;
 
-  @Prop({ type: [BudgetItemMatchingRuleSchema], default: [] })
+  @Prop({
+    type: [BudgetItemMatchingRuleSchema],
+    default: [],
+    validate: {
+      validator: (rules: unknown) => matchingRulesError(rules) === undefined,
+      message: (props: { value: unknown }) =>
+        matchingRulesError(props.value) ?? 'Invalid matchingRules',
+    },
+  })
   matchingRules!: BudgetItemMatchingRule[];
 
   @Prop({ default: false })
