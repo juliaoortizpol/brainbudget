@@ -109,7 +109,12 @@ describe('remember assignment (controlled persistence)', () => {
       }),
     );
     const transactions = {
-      db: { startSession: jest.fn().mockResolvedValue(session) },
+      db: {
+        startSession: jest.fn().mockResolvedValue(session),
+        collection: () => ({
+          updateOne: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+        }),
+      },
       findOne: jest.fn(() => query(transactionAvailable ? transaction : null)),
       findOneAndUpdate: transactionWrite,
     };
@@ -151,7 +156,7 @@ describe('remember assignment (controlled persistence)', () => {
       rememberMerchant: false,
     });
     expect(itemWrite).not.toHaveBeenCalled();
-    expect(session.withTransaction).not.toHaveBeenCalled();
+    expect(session.withTransaction).toHaveBeenCalledTimes(1);
     expect(transaction).not.toHaveProperty('rememberMerchant');
     expect(transaction).not.toHaveProperty('merchantKeyword');
   });

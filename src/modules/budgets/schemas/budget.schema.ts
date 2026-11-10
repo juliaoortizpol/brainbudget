@@ -18,8 +18,24 @@ export class Budget {
   @Prop({ required: true })
   startDate!: Date;
 
-  @Prop({ required: true })
-  endDate!: Date;
+  /** Compatibility alias for plannedEndDate; never a v1 coverage boundary. */
+  @Prop()
+  endDate?: Date;
+
+  @Prop()
+  plannedEndDate?: Date;
+
+  @Prop()
+  actualCutoffDate?: Date;
+
+  @Prop()
+  closedAt?: Date;
+
+  @Prop()
+  timezone?: string;
+
+  @Prop({ enum: [1] })
+  coverageVersion?: number;
 
   @Prop({ required: true, enum: ['draft', 'active', 'closed'] })
   status!: string;
@@ -32,3 +48,15 @@ export class Budget {
 }
 
 export const BudgetSchema = SchemaFactory.createForClass(Budget);
+BudgetSchema.index(
+  { userId: 1 },
+  {
+    name: 'one_active_coverage_v1_per_owner',
+    unique: true,
+    partialFilterExpression: {
+      status: 'active',
+      isDeleted: false,
+      coverageVersion: 1,
+    },
+  },
+);

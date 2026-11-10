@@ -10,6 +10,12 @@ import { QueryFilter, Model, Types, ClientSession } from 'mongoose';
 import { randomUUID } from 'crypto';
 import { MerchantNormalizationService } from './merchant-normalization.service';
 import { matchingRulesError } from '../budgets/matching-rule-validation';
+import {
+  budgetCoverage,
+  budgetCoversPurchase,
+  coverageDateFilter,
+} from '../budgets/budget-coverage';
+import { coverageWrite } from '../budgets/coverage-write';
 import { Transaction, TransactionDocument } from './schemas/transaction.schema';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -73,13 +79,7 @@ export class TransactionsService {
         'Budget item type must match transaction type',
       );
     }
-    const timestamp = new Date(date).getTime();
-    if (
-      !(
-        timestamp >= budget.startDate.getTime() &&
-        timestamp <= budget.endDate.getTime()
-      )
-    ) {
+    if (!budgetCoversPurchase(budget, new Date(date))) {
       throw new BadRequestException(
         'Transaction date must be within the budget period',
       );
@@ -128,11 +128,22 @@ export class TransactionsService {
     userId: string,
     createTransactionDto: CreateTransactionDto,
   ): Promise<Transaction> {
+    return coverageWrite(this.transactionModel.db, userId, (session) =>
+      this.createInSession(userId, createTransactionDto, session),
+    );
+  }
+
+  private async createInSession(
+    userId: string,
+    createTransactionDto: CreateTransactionDto,
+    session: ClientSession,
+  ): Promise<Transaction> {
     const assignment = await this.assignment(
       userId,
       createTransactionDto,
       createTransactionDto.type,
       createTransactionDto.date,
+      session,
     );
     const createdTransaction = new this.transactionModel({
       ...createTransactionDto,
@@ -142,13 +153,14 @@ export class TransactionsService {
         ? new Types.ObjectId(createTransactionDto.accountId)
         : undefined,
     });
-    return createdTransaction.save();
+    return createdTransaction.save({ session });
   }
 
   async findAll(userId: string, filterDto: GetTransactionsFilterDto) {
     const {
       accountId,
       budgetItemId,
+      budgetId,
       startDate,
       endDate,
       type,
@@ -169,6 +181,21 @@ export class TransactionsService {
     }
     if (type) {
       query.type = type;
+    }
+    if (budgetId) {
+      if (startDate || endDate)
+        throw new BadRequestException(
+          'Use budgetId coverage or explicit date filters, not both',
+        );
+      const budget = await this.budgets
+        .findOne({
+          _id: new Types.ObjectId(budgetId),
+          userId: new Types.ObjectId(userId),
+          isDeleted: false,
+        })
+        .exec();
+      if (!budget) throw new NotFoundException('Budget is unavailable');
+      query.date = coverageDateFilter(budgetCoverage(budget));
     }
     if (matchingStatus === 'needs_review') {
       // Query stored values before hydration can apply the schema default.
@@ -235,16 +262,18 @@ export class TransactionsService {
     userId: string,
     updateTransactionDto: UpdateTransactionDto,
   ): Promise<Transaction> {
-    if (updateTransactionDto.rememberMerchant === true) {
-      return this.rememberAssignment(id, userId, updateTransactionDto);
-    }
-    return this.updateExisting(id, userId, updateTransactionDto);
+    return coverageWrite(this.transactionModel.db, userId, (session) =>
+      updateTransactionDto.rememberMerchant === true
+        ? this.rememberAssignment(id, userId, updateTransactionDto, session)
+        : this.updateExisting(id, userId, updateTransactionDto, session),
+    );
   }
 
   private async rememberAssignment(
     id: string,
     userId: string,
     dto: UpdateTransactionDto,
+    session: ClientSession,
   ): Promise<Transaction> {
     if (
       typeof dto.budgetItemId !== 'string' ||
@@ -263,11 +292,9 @@ export class TransactionsService {
     };
     const error = matchingRulesError([rule]);
     if (error) throw new BadRequestException(error);
-    let session: ClientSession | undefined;
     try {
-      session = await this.transactionModel.db.startSession();
       const activeSession = session;
-      const result = await session.withTransaction(async () => {
+      const result = await (async () => {
         const current = await this.transactionModel
           .findOne(
             {
@@ -341,7 +368,7 @@ export class TransactionsService {
           }
         }
         return this.updateExisting(id, userId, dto, activeSession);
-      });
+      })();
       if (!result)
         throw new ServiceUnavailableException(
           'Remember was not committed; retry',
@@ -352,8 +379,6 @@ export class TransactionsService {
       throw new ServiceUnavailableException(
         'Could not save assignment and merchant rule together; transactional database required. Retry or assign without remember',
       );
-    } finally {
-      await session?.endSession();
     }
   }
 

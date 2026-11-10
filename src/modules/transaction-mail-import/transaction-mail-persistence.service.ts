@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { BudgetMatchingService } from '@/modules/budgets/budget-matching.service';
 import { BudgetMatchingContextService } from '@/modules/budgets/budget-matching-context.service';
+import { coverageWrite } from '@/modules/budgets/coverage-write';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { MerchantNormalizationService } from '@/modules/transactions/merchant-normalization.service';
@@ -38,55 +39,66 @@ export class TransactionMailPersistenceService {
     };
 
     if (!envelopes.length) return result;
-    const context = await this.matchingContext.load(userId);
 
     for (const envelope of envelopes) {
       try {
-        const transaction = envelope.transaction;
-        const matching = this.budgetMatching.matchTransaction(
-          {
-            userId: new Types.ObjectId(userId),
-            name: transaction.description,
-            rawDescription: transaction.description,
-            normalizedMerchant: this.merchantNormalization.normalize(
-              transaction.description,
-            ),
-            date: transaction.transactionDate,
-            type: transaction.type,
-          } as Transaction,
-          context,
-        );
-        const writeResult = await this.transactionModel
-          .updateOne(
-            {
-              userId: new Types.ObjectId(userId),
-              source: TransactionSource.GMAIL,
-              sourceMessageId: envelope.messageId,
-            },
-            {
-              $setOnInsert: {
+        const writeResult = await coverageWrite(
+          this.transactionModel.db,
+          userId,
+          async (session) => {
+            const context = await this.matchingContext.load(userId, session);
+            const transaction = envelope.transaction;
+            const matching = this.budgetMatching.matchTransaction(
+              {
                 userId: new Types.ObjectId(userId),
-                accountId: new Types.ObjectId(envelope.accountId),
                 name: transaction.description,
-                budgetItemId: matching.budgetItemId,
-                matchingStatus: matching.matchingStatus,
-                matchingSource: matching.matchingSource,
                 rawDescription: transaction.description,
-                normalizedMerchant: matching.normalizedMerchant,
-                amount: transaction.amount,
-                type: transaction.type,
-                currency: transaction.currency,
-                relationCode: transaction.reference,
+                normalizedMerchant: this.merchantNormalization.normalize(
+                  transaction.description,
+                ),
                 date: transaction.transactionDate,
-                source: TransactionSource.GMAIL,
-                sourceMessageId: envelope.messageId,
-                parserKey: envelope.parserKey,
-                parserVersion: envelope.parserVersion,
-              },
-            },
-            { upsert: true, runValidators: true },
-          )
-          .exec();
+                type: transaction.type,
+              } as Transaction,
+              context,
+            );
+            return this.transactionModel
+              .updateOne(
+                {
+                  userId: new Types.ObjectId(userId),
+                  source: TransactionSource.GMAIL,
+                  sourceMessageId: envelope.messageId,
+                },
+                {
+                  $setOnInsert: {
+                    userId: new Types.ObjectId(userId),
+                    accountId: new Types.ObjectId(envelope.accountId),
+                    name: transaction.description,
+                    budgetItemId: matching.budgetItemId,
+                    matchingStatus: matching.matchingStatus,
+                    matchingSource: matching.matchingSource,
+                    rawDescription: transaction.description,
+                    normalizedMerchant: matching.normalizedMerchant,
+                    amount: transaction.amount,
+                    type: transaction.type,
+                    currency: transaction.currency,
+                    relationCode: transaction.reference,
+                    date: transaction.transactionDate,
+                    source: TransactionSource.GMAIL,
+                    sourceMessageId: envelope.messageId,
+                    parserKey: envelope.parserKey,
+                    parserVersion: envelope.parserVersion,
+                  },
+                },
+                { upsert: true, runValidators: true, session },
+              )
+              .exec()
+              .catch((error: unknown) => {
+                if (this.isDuplicateKeyError(error))
+                  throw new ConflictException('Duplicate imported message');
+                throw error;
+              });
+          },
+        );
 
         if (writeResult.upsertedCount === 1) {
           result.transactionsCreated++;
@@ -94,7 +106,7 @@ export class TransactionMailPersistenceService {
           result.duplicatesSkipped++;
         }
       } catch (error) {
-        if (this.isDuplicateKeyError(error)) {
+        if (error instanceof ConflictException) {
           result.duplicatesSkipped++;
           continue;
         }

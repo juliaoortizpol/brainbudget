@@ -1,3 +1,4 @@
+import { coverageTestConnection } from '../../../test/coverage-test-support';
 import { BadRequestException } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
 import { TransactionsService } from './transactions.service';
@@ -45,10 +46,13 @@ describe('manual transaction assignments', () => {
     item = { budgetId: new Types.ObjectId(), type: 'expense' };
     budget = {
       status: 'active',
+      coverageVersion: 1,
+      timezone: 'UTC',
       startDate: new Date('2026-11-01T00:00:00Z'),
       endDate: new Date('2026-11-30T00:00:00Z'),
     };
     class TransactionModel {
+      static db = coverageTestConnection();
       constructor(data: Record<string, unknown>) {
         saved = data;
       }
@@ -203,7 +207,11 @@ describe('manual transaction assignments', () => {
         },
         $unset: { matchingConfidence: 1 },
       },
-      { new: true, runValidators: true },
+      {
+        new: true,
+        runValidators: true,
+        session: expect.any(Object) as unknown,
+      },
     );
   });
 
@@ -292,7 +300,7 @@ describe('manual transaction assignments', () => {
           },
           {
             item: eligibleItem,
-            budget: { ...eligibleBudget, endDate: new Date('2026-10-31') },
+            budget: { ...eligibleBudget, startDate: new Date('2026-11-03') },
             message: 'Transaction date must be within',
           },
         ];
@@ -326,7 +334,7 @@ describe('manual transaction assignments', () => {
             userId,
             field === 'type'
               ? { type: 'income' }
-              : { date: new Date('2026-12-01') },
+              : { date: new Date('2026-10-31') },
           ),
         ).rejects.toThrow(BadRequestException);
         expect(current).toEqual(before);
@@ -342,6 +350,24 @@ describe('manual transaction assignments', () => {
         date: new Date('2026-11-15'),
       });
       expect(update).toHaveBeenCalled();
+    });
+
+    it('accepts December assignments and date edits after the November planned end', async () => {
+      await service.create(
+        userId,
+        plainToInstance(CreateTransactionDto, {
+          ...payload,
+          date: '2026-12-12T12:00:00Z',
+          budgetItemId: itemId,
+        }),
+      );
+      expect(saved.matchingStatus).toBe('manual');
+      await service.update(id, userId, {
+        date: new Date('2026-12-12T12:00:00Z'),
+      });
+      expect(update.mock.calls[0][1].$set.date).toEqual(
+        new Date('2026-12-12T12:00:00Z'),
+      );
     });
 
     it.each(['2026-11-01T00:00:00Z', '2026-11-30T00:00:00Z'])(

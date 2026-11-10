@@ -35,7 +35,7 @@ export class CreateTransactionDto {
   @IsOptional()
   relationCode?: string;
 
-  @IsDateString()
+  @IsDateString({ strict: true })
   @IsNotEmpty()
   date!: Date;
 

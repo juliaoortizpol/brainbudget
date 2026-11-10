@@ -1,3 +1,4 @@
+import { coverageTestConnection } from '../../../test/coverage-test-support';
 import { ValidationPipe } from '@nestjs/common';
 import { model, Types } from 'mongoose';
 import { BudgetsService } from './budgets.service';
@@ -131,7 +132,11 @@ describe('Replacement matching rule validation', () => {
       save = save;
     }
     const service = new BudgetsService(
-      { findOneAndUpdate } as never,
+      {
+        db: coverageTestConnection(),
+        findOne: () => ({ exec: () => Promise.resolve({ status: 'draft' }) }),
+        updateOne: findOneAndUpdate,
+      } as never,
       ItemModel as never,
       {} as never,
     );

@@ -1,4 +1,9 @@
-# AEM-BE3 implementation checkpoint
+# AEM-BE3 historical scaffold checkpoint
+
+This document records the previous scaffold only. Its midnight-only restriction
+and remaining-work inventory are superseded by [the coverage contract](budget-coverage.md).
+The current working tree implements lifecycle/consumer/migration wiring and still
+requires trusted commit, real synthetic integration and exact-head verification.
 
 Requirements hash: 9aa64f989867da2378e81415e43c11f9c810769d781d24abcd36b8ebe89896da.
 

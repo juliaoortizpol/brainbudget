@@ -8,6 +8,7 @@ import {
   IsNumber,
   IsBoolean,
   IsArray,
+  Matches,
   ValidateIf,
 } from 'class-validator';
 import { ValidMatchingRules } from './valid-matching-rules';
@@ -60,13 +61,31 @@ export class CreateBudgetDto {
   @IsNotEmpty()
   periodType!: string;
 
-  @IsDateString()
+  @IsDateString({ strict: true })
   @IsNotEmpty()
   startDate!: string;
 
-  @IsDateString()
+  @IsDateString({ strict: true })
+  @ValidateIf((_, value) => value !== undefined)
+  endDate?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsDateString({ strict: true })
+  plannedEndDate?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsDateString({ strict: true })
+  actualCutoffDate?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  closeThroughDate?: string;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsString()
   @IsNotEmpty()
-  endDate!: string;
+  timezone?: string;
 
   @IsEnum(['draft', 'active', 'closed'])
   @IsNotEmpty()
