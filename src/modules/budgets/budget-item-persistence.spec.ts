@@ -1,3 +1,4 @@
+import { coverageTestConnection } from '../../../test/coverage-test-support';
 import { ValidationPipe } from '@nestjs/common';
 import { Types, model } from 'mongoose';
 import { BudgetsService } from './budgets.service';
@@ -137,6 +138,7 @@ describe('Budget item keyword persistence', () => {
     const insertMany = jest.fn().mockResolvedValue([]);
     const nextBudgetId = new Types.ObjectId();
     class BudgetModel {
+      static db = coverageTestConnection();
       static find = () => ({
         select: () => ({ exec: () => Promise.resolve([]) }),
       });
@@ -158,9 +160,11 @@ describe('Budget item keyword persistence', () => {
       startDate: new Date('2026-11-01'),
       endDate: new Date('2026-11-30'),
       status: 'draft',
+      timezone: 'UTC',
       items: [],
     });
     await service.create(userId, {
+      timezone: 'UTC',
       name: 'Next month',
       periodType: 'monthly',
       startDate: '2026-11-01',
@@ -175,8 +179,14 @@ describe('Budget item keyword persistence', () => {
         },
       ],
     });
-    expect(insertMany).toHaveBeenCalledWith([
-      expect.objectContaining({ budgetId: nextBudgetId, matchingRules: rules }),
-    ]);
+    expect(insertMany).toHaveBeenCalledWith(
+      [
+        expect.objectContaining({
+          budgetId: nextBudgetId,
+          matchingRules: rules,
+        }),
+      ],
+      { session: BudgetModel.db.session },
+    );
   });
 });

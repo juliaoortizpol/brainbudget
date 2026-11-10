@@ -1,3 +1,4 @@
+import { coverageTestConnection } from '../../../test/coverage-test-support';
 import { BudgetMatchingContextService } from '@/modules/budgets/budget-matching-context.service';
 import { Types } from 'mongoose';
 import { BudgetMatchingService } from '@/modules/budgets/budget-matching.service';
@@ -25,7 +26,7 @@ describe('TransactionMailPersistenceService', () => {
     },
   };
 
-  it('loads budgets and items once for 100 transactions', async () => {
+  it('refreshes budgets and items under the owner lock for each imported transaction', async () => {
     const budget = {
       _id: new Types.ObjectId(),
       userId: new Types.ObjectId(userId),
@@ -45,6 +46,7 @@ describe('TransactionMailPersistenceService', () => {
         .mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }),
     };
     const transactionModel = {
+      db: coverageTestConnection(),
       updateOne: jest.fn().mockReturnValue({
         exec: jest.fn().mockResolvedValue({ upsertedCount: 1 }),
       }),
@@ -73,25 +75,34 @@ describe('TransactionMailPersistenceService', () => {
       })),
     );
     expect(result.transactionsCreated).toBe(100);
-    expect(budgets.find).toHaveBeenCalledTimes(1);
-    expect(items.find).toHaveBeenCalledTimes(1);
-    expect(budgets.find).toHaveBeenCalledWith({
-      userId: budget.userId,
-      status: 'active',
-      isDeleted: false,
-    });
-    expect(items.find).toHaveBeenCalledWith({
-      userId: budget.userId,
-      budgetId: { $in: [budget._id] },
-      isDeleted: false,
-    });
+    expect(budgets.find).toHaveBeenCalledTimes(100);
+    expect(items.find).toHaveBeenCalledTimes(100);
+    expect(budgets.find).toHaveBeenCalledWith(
+      {
+        userId: budget.userId,
+        status: 'active',
+        isDeleted: false,
+      },
+      null,
+      { session: transactionModel.db.session },
+    );
+    expect(items.find).toHaveBeenCalledWith(
+      {
+        userId: budget.userId,
+        budgetId: { $in: [budget._id] },
+        isDeleted: false,
+      },
+      null,
+      { session: transactionModel.db.session },
+    );
     await service.save(userId, []);
-    expect(budgets.find).toHaveBeenCalledTimes(1);
+    expect(budgets.find).toHaveBeenCalledTimes(100);
   });
 
   it('creates a Gmail transaction using an atomic upsert', async () => {
     const exec = jest.fn().mockResolvedValue({ upsertedCount: 1 });
     const transactionModel = {
+      db: coverageTestConnection(),
       updateOne: jest.fn().mockReturnValue({ exec }),
     };
     const service = new TransactionMailPersistenceService(
@@ -142,12 +153,17 @@ describe('TransactionMailPersistenceService', () => {
           budgetItemId: '507f191e810c19729de860ec',
         }) as unknown,
       },
-      { upsert: true, runValidators: true },
+      {
+        upsert: true,
+        runValidators: true,
+        session: transactionModel.db.session,
+      },
     );
   });
 
   it('counts an existing upsert target as a duplicate', async () => {
     const transactionModel = {
+      db: coverageTestConnection(),
       updateOne: jest.fn().mockReturnValue({
         exec: jest.fn().mockResolvedValue({ upsertedCount: 0 }),
       }),
@@ -178,6 +194,7 @@ describe('TransactionMailPersistenceService', () => {
 
   it('treats a duplicate-key race as a skipped duplicate', async () => {
     const transactionModel = {
+      db: coverageTestConnection(),
       updateOne: jest.fn().mockReturnValue({
         exec: jest.fn().mockRejectedValue({ code: 11000 }),
       }),
@@ -208,6 +225,7 @@ describe('TransactionMailPersistenceService', () => {
 
   it('reports a non-duplicate persistence failure', async () => {
     const transactionModel = {
+      db: coverageTestConnection(),
       updateOne: jest.fn().mockReturnValue({
         exec: jest.fn().mockRejectedValue(new Error('database unavailable')),
       }),

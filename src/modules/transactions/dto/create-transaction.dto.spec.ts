@@ -56,6 +56,29 @@ describe('Transaction matching metadata', () => {
     ).resolves.toEqual({ normalizedMerchant: 'Market' });
   });
 
+  it.each(['2023-02-29T12:00:00Z', '2024-04-31', null])(
+    'rejects impossible or null purchase dates: %s',
+    async (date) => {
+      for (const metatype of [CreateTransactionDto, UpdateTransactionDto]) {
+        await expect(
+          pipe.transform({ ...transaction, date }, { type: 'body', metatype }),
+        ).rejects.toThrow();
+      }
+    },
+  );
+
+  it('accepts leap-day purchase dates and explicit assignment clearing', async () => {
+    await expect(
+      pipe.transform(
+        { date: '2024-02-29T12:34:56Z', budgetItemId: null },
+        { type: 'body', metatype: UpdateTransactionDto },
+      ),
+    ).resolves.toMatchObject({
+      date: '2024-02-29T12:34:56Z',
+      budgetItemId: null,
+    });
+  });
+
   it.each([
     { matchingStatus: 'unknown' },
     { matchingSource: 'learned' },

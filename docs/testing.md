@@ -49,6 +49,12 @@ Budget rule validation and the pending persisted API matrix are documented in
 Expense review query policy and the persisted synthetic API verification matrix
 are documented in [transaction review](transaction-review.md).
 
+Coverage lifecycle, instant/calendar-day dates, migration and concurrency prerequisites
+are documented in [budget coverage](budget-coverage.md). Unit/controlled HTTP tests
+do not establish persisted Mongo isolation, rollback or migration evidence.
+
 Use docs/qa-reporting.md. For integrated testing, record both repositories' exact
 commits, isolated environment and synthetic data. Unit/build checks do not replace
 independent review, browser QA, authorization checks or financial correctness tests.
+
+BE3 coverage-routes uses real Nest/Express request dispatch with an in-memory Node HTTP transport (test/inject-http-routes.ts). It preserves route/pipe assertions without TCP permissions; it does not prove network/auth/database integration. Separate guarded real HTTP/Mongo evidence is mandatory for BE3.

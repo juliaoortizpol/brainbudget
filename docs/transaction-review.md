@@ -21,6 +21,11 @@ page, rather than overriding the requested type. Existing date-descending sort,
 pagination and total/count metadata remain in use. Omitting matchingStatus keeps
 the previous list query and behavior.
 
+Use budgetId instead of explicit dates for inclusive-start/exclusive-cutoff budget
+coverage, including post-planned-end purchases while open and closed history.
+This period includes unassigned review rows; it does not imply category membership.
+See [coverage contract](budget-coverage.md).
+
 ## Persisted API verification handoff
 
 The trusted host must use only `brainbudget_qa_synthetic`, with synthetic owners

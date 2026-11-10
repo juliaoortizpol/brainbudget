@@ -4,7 +4,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
+import {
+  budgetCoverage,
+  completedDayCutoff,
+  coverageDateFilter,
+  coverageOverlaps,
+  validateCoverage,
+  validateFinalCutoff,
+} from './budget-coverage';
+import { coverageWrite } from './coverage-write';
 import { Budget, BudgetDocument } from './schemas/budget.schema';
 import { BudgetItem, BudgetItemDocument } from './schemas/budget-item.schema';
 import {
@@ -43,44 +52,33 @@ export class BudgetsService {
     this.validateItems(items);
     const userObjectId = new Types.ObjectId(userId);
 
-    // Soft delete any existing active budgets for this user
-    const existingBudgets = await this.budgetModel
-      .find({ userId: userObjectId, isDeleted: false })
-      .select('_id')
-      .exec();
-    if (existingBudgets.length > 0) {
-      const budgetIds = existingBudgets.map((b) => b._id);
-      await this.budgetModel
-        .updateMany(
-          { _id: { $in: budgetIds } },
-          { $set: { isDeleted: true, deletedAt: new Date() } },
-        )
-        .exec();
-
-      await this.budgetItemModel
-        .updateMany(
-          { budgetId: { $in: budgetIds }, isDeleted: false },
-          { $set: { isDeleted: true, deletedAt: new Date() } },
-        )
-        .exec();
-    }
-
-    const createdBudget = new this.budgetModel({
-      ...budgetData,
-      userId: userObjectId,
-    });
-    const savedBudget = await createdBudget.save();
-
-    if (items && items.length > 0) {
-      const budgetItems = items.map((item) => ({
-        ...item,
-        budgetId: savedBudget._id,
-        userId: new Types.ObjectId(userId),
-      }));
-      await this.budgetItemModel.insertMany(budgetItems);
-    }
-
-    return this.findOne(savedBudget._id.toString(), userId);
+    const data = this.lifecycleData(budgetData);
+    if (data.status === 'closed')
+      throw new BadRequestException(
+        'Create a draft or active budget before closing',
+      );
+    const id = await coverageWrite(
+      this.budgetModel.db,
+      userId,
+      async (session) => {
+        await this.validateLifecycle(userId, data, undefined, session);
+        const saved = await new this.budgetModel({
+          ...data,
+          userId: userObjectId,
+        }).save({ session });
+        if (items?.length)
+          await this.budgetItemModel.insertMany(
+            items.map((item) => ({
+              ...item,
+              budgetId: saved._id,
+              userId: userObjectId,
+            })),
+            { session },
+          );
+        return saved._id.toString();
+      },
+    );
+    return this.findOne(id, userId);
   }
 
   async findAll(userId: string): Promise<BudgetWithItems[]> {
@@ -154,34 +152,80 @@ export class BudgetsService {
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(id);
 
-    const existingBudget = await this.budgetModel
-      .findOneAndUpdate(
-        { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
-        { $set: budgetData },
-        { new: true },
+    await coverageWrite(this.budgetModel.db, userId, async (session) => {
+      const current = await this.budgetModel
+        .findOne(
+          { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
+          null,
+          { session },
+        )
+        .exec();
+      if (!current) throw new NotFoundException(`Budget #${id} not found`);
+      const changesCoverage = [
+        'status',
+        'startDate',
+        'timezone',
+        'actualCutoffDate',
+        'closeThroughDate',
+      ].some((key) => Object.hasOwn(budgetData, key));
+      if (
+        current.coverageVersion !== 1 &&
+        (changesCoverage || Object.hasOwn(budgetData, 'endDate'))
       )
-      .exec();
-
-    if (!existingBudget) {
-      throw new NotFoundException(`Budget #${id} not found`);
-    }
-
-    if (items && items.length > 0) {
-      for (const item of items) {
-        // Create new budget items
-        const newItem = new this.budgetItemModel({
-          ...item,
-          budgetId: budgetObjectId,
-          userId: userObjectId,
-        });
-        await newItem.save();
-      }
-    }
+        throw new BadRequestException(
+          'Legacy coverage requires explicit migration before lifecycle changes',
+        );
+      if (current.status === 'closed' && changesCoverage)
+        throw new BadRequestException(
+          'Final closed coverage cannot be changed or reopened',
+        );
+      if (
+        current.status !== 'draft' &&
+        budgetData.timezone !== undefined &&
+        budgetData.timezone !== current.timezone
+      )
+        throw new BadRequestException('Timezone is preserved after activation');
+      if (current.status === 'active' && budgetData.status === 'draft')
+        throw new BadRequestException('Active budgets require manual closure');
+      if (budgetData.status === 'closed' && current.status !== 'active')
+        throw new BadRequestException('Only an active budget can be closed');
+      const data =
+        current.coverageVersion === 1
+          ? this.lifecycleData(budgetData, current)
+          : budgetData;
+      if (current.coverageVersion === 1)
+        await this.validateLifecycle(userId, data as Budget, current, session);
+      await this.budgetModel
+        .updateOne(
+          { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
+          { $set: data },
+          { session, runValidators: true },
+        )
+        .exec();
+      if (items?.length)
+        for (const item of items)
+          await new this.budgetItemModel({
+            ...item,
+            budgetId: budgetObjectId,
+            userId: userObjectId,
+          }).save({ session });
+      return true;
+    });
 
     return this.findOne(id, userId);
   }
 
   async softDelete(id: string, userId: string): Promise<BudgetDocument> {
+    return coverageWrite(this.budgetModel.db, userId, (session) =>
+      this.softDeleteInSession(id, userId, session),
+    );
+  }
+
+  private async softDeleteInSession(
+    id: string,
+    userId: string,
+    session: ClientSession,
+  ): Promise<BudgetDocument> {
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(id);
 
@@ -189,7 +233,7 @@ export class BudgetsService {
       .findOneAndUpdate(
         { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
         { $set: { isDeleted: true, deletedAt: new Date() } },
-        { new: true },
+        { new: true, session },
       )
       .exec();
 
@@ -202,6 +246,7 @@ export class BudgetsService {
       .updateMany(
         { budgetId: budgetObjectId, isDeleted: false },
         { $set: { isDeleted: true, deletedAt: new Date() } },
+        { session },
       )
       .exec();
 
@@ -213,6 +258,17 @@ export class BudgetsService {
     itemId: string,
     userId: string,
   ): Promise<BudgetItemDocument> {
+    return coverageWrite(this.budgetModel.db, userId, (session) =>
+      this.softDeleteItemInSession(budgetId, itemId, userId, session),
+    );
+  }
+
+  private async softDeleteItemInSession(
+    budgetId: string,
+    itemId: string,
+    userId: string,
+    session: ClientSession,
+  ): Promise<BudgetItemDocument> {
     const deletedItem = await this.budgetItemModel
       .findOneAndUpdate(
         {
@@ -222,7 +278,7 @@ export class BudgetsService {
           isDeleted: false,
         },
         { $set: { isDeleted: true, deletedAt: new Date() } },
-        { new: true },
+        { new: true, session },
       )
       .exec();
 
@@ -290,6 +346,153 @@ export class BudgetsService {
     if (error) throw new BadRequestException(error);
   }
 
+  private lifecycleData(
+    dto: Partial<CreateBudgetDto>,
+    current?: Budget,
+  ): Budget {
+    const now = new Date();
+    const data = {
+      ...(current
+        ? {
+            name: current.name,
+            periodType: current.periodType,
+            status: current.status,
+            startDate: current.startDate,
+            plannedEndDate: current.plannedEndDate,
+            endDate: current.endDate,
+            actualCutoffDate: current.actualCutoffDate,
+            closedAt: current.closedAt,
+            timezone: current.timezone,
+          }
+        : {}),
+      ...dto,
+      coverageVersion: 1,
+    } as unknown as Budget;
+    data.startDate = new Date(dto.startDate ?? current?.startDate ?? NaN);
+    if (
+      dto.endDate !== undefined &&
+      dto.plannedEndDate !== undefined &&
+      new Date(dto.endDate).getTime() !== new Date(dto.plannedEndDate).getTime()
+    )
+      throw new BadRequestException(
+        'endDate is an alias of plannedEndDate; values must agree',
+      );
+    const planned =
+      dto.plannedEndDate ?? dto.endDate ?? current?.plannedEndDate;
+    if (planned !== undefined)
+      data.endDate = data.plannedEndDate = new Date(planned);
+    if (data.status === 'closed' && current?.status !== 'closed') {
+      data.closedAt = now;
+      if (
+        dto.closeThroughDate !== undefined &&
+        dto.actualCutoffDate !== undefined
+      )
+        throw new BadRequestException(
+          'Choose an explicit cutoff or completed day, not both',
+        );
+      try {
+        data.actualCutoffDate =
+          dto.closeThroughDate !== undefined
+            ? completedDayCutoff(dto.closeThroughDate, data.timezone!)
+            : dto.actualCutoffDate === undefined
+              ? now
+              : new Date(dto.actualCutoffDate);
+      } catch (error) {
+        throw new BadRequestException((error as Error).message);
+      }
+    } else if (
+      dto.actualCutoffDate !== undefined ||
+      dto.closeThroughDate !== undefined
+    )
+      throw new BadRequestException(
+        'Actual cutoff is accepted only with manual closure',
+      );
+    try {
+      validateCoverage(budgetCoverage(data));
+      if (
+        data.plannedEndDate &&
+        (!Number.isFinite(data.plannedEndDate.getTime()) ||
+          data.plannedEndDate <= data.startDate)
+      )
+        throw new Error('Planned end must follow coverage start');
+      if (data.status === 'closed')
+        validateFinalCutoff(budgetCoverage(data), data.closedAt!, now);
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
+    return data;
+  }
+
+  private async validateLifecycle(
+    userId: string,
+    data: Budget,
+    current: BudgetDocument | undefined,
+    session: ClientSession,
+  ): Promise<void> {
+    const owner = new Types.ObjectId(userId);
+    if (data.status !== 'draft') {
+      const others = await this.budgetModel
+        .find(
+          {
+            userId: owner,
+            isDeleted: false,
+            status: { $in: ['active', 'closed'] },
+            ...(current ? { _id: { $ne: current._id } } : {}),
+          },
+          null,
+          { session },
+        )
+        .exec();
+      for (const other of others) {
+        if (data.status === 'active' && other.status === 'active')
+          throw new BadRequestException(
+            'Only one active budget is allowed; close the current budget first',
+          );
+        if (other.coverageVersion !== 1)
+          throw new BadRequestException(
+            'Resolve legacy coverage before activation or closure',
+          );
+        if (coverageOverlaps(budgetCoverage(data), budgetCoverage(other)))
+          throw new BadRequestException(
+            'Coverage overlaps another active or closed budget',
+          );
+      }
+    }
+    if (!current) return;
+    const items = await this.budgetItemModel
+      .find({ budgetId: current._id, userId: owner }, null, { session })
+      .exec();
+    const refs = items.flatMap((item) => [item._id, item._id.toString()]);
+    const outside = await this.transactionModel
+      .find(
+        {
+          userId: owner,
+          budgetItemId: { $in: refs },
+          $or: [
+            { date: { $lt: data.startDate } },
+            ...(data.actualCutoffDate
+              ? [{ date: { $gte: data.actualCutoffDate } }]
+              : []),
+          ],
+        },
+        { _id: 1, date: 1, budgetItemId: 1 },
+        { session },
+      )
+      .limit(21)
+      .exec();
+    if (outside.length)
+      throw new BadRequestException({
+        message:
+          'Coverage would exclude saved assignments. Correct dates, clear or reassign these transactions before retrying',
+        affectedTransactions: outside.slice(0, 20).map((t) => ({
+          id: t._id.toString(),
+          date: t.date,
+          budgetItemId: t.budgetItemId?.toString(),
+        })),
+        hasMore: outside.length > 20,
+      });
+  }
+
   private validateItems(items: unknown): void {
     if (items === undefined) return;
     if (!Array.isArray(items))
@@ -308,9 +511,6 @@ export class BudgetsService {
   ): Promise<BudgetItemWithSpent[]> {
     if (!budgetItems.length) return [];
 
-    const now = new Date();
-    const endDateLimit = budget.endDate < now ? budget.endDate : now;
-
     const transactions = await this.transactionModel.aggregate<{
       _id: Types.ObjectId;
       totalSpent: number;
@@ -321,8 +521,8 @@ export class BudgetsService {
           type: 'expense',
           budgetItemId: { $exists: true },
           date: {
-            $gte: budget.startDate,
-            $lte: endDateLimit,
+            ...coverageDateFilter(budgetCoverage(budget)),
+            $lte: new Date(),
           },
         },
       },

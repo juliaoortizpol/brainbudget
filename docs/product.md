@@ -8,11 +8,11 @@ pagination, Gmail connection/reading, and a transaction-mail import pipeline.
 The parser registry includes APAP and Qik credit-card mail parsers.
 
 Budgets have monthly/weekly/custom periods and draft/active/closed status.
-Creating a budget currently soft-deletes prior non-deleted budgets and their
-items for that user (see BudgetsService.create); this is observed behavior,
-not a newly approved product requirement.
-Budget item spent values aggregate absolute expense amounts within the budget
-period through the earlier of its end date and now, then round to two decimals.
+Creating budgets preserves existing budgets/items. Drafts coexist with at most one
+active budget per owner. Active v1 coverage continues until manual closure,
+independently of optional planning. Spending uses inclusive start / exclusive actual
+cutoff and absolute expense amounts rounded to two decimals. See
+[coverage contract](budget-coverage.md) for migration and verification boundaries.
 Transactions may be manual or Gmail-sourced. Imported messages have a per-user
 deduplication key. Accounts and budgets use soft deletion in their services;
 transaction removal currently uses physical deletion.

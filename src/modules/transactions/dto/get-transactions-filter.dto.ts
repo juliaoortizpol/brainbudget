@@ -11,6 +11,10 @@ import { Type } from 'class-transformer';
 export class GetTransactionsFilterDto {
   @IsOptional()
   @IsMongoId()
+  budgetId?: string;
+
+  @IsOptional()
+  @IsMongoId()
   accountId?: string;
 
   @IsOptional()
@@ -18,11 +22,11 @@ export class GetTransactionsFilterDto {
   budgetItemId?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   startDate?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: true })
   endDate?: string;
 
   @IsOptional()

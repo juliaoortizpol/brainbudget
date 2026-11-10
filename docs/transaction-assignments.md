@@ -8,9 +8,10 @@ manual and matchingSource manual. The item and its parent budget must belong to
 the authenticated user and must not be soft deleted.
 The parent must be active (draft and closed budgets are ineligible), the item
 type must equal the resulting transaction type, and the resulting transaction
-date must fall within the parent's startDate/endDate, inclusive. These are exact
-timestamp comparisons, consistent with current matching; no full-day expansion
-or timezone reinterpretation is applied.
+date must fall within inclusive startDate / exclusive actualCutoffDate coverage.
+Active v1 budgets have no cutoff, so plannedEndDate/endDate never blocks a later
+purchase. Legacy records retain inclusive end until explicit migration. See
+[coverage contract](budget-coverage.md).
 
 PATCH /transactions/:id with `{"budgetItemId":null}` clears the assignment,
 sets needs_review and removes matchingSource and matchingConfidence. Omitting
@@ -30,7 +31,9 @@ caller to reload and retry, rather than applying a stale validation result.
 Matching status/source are optional compatibility fields; supplied values must
 agree with the derived assignment. Client confidence and metadata-only PATCH
 requests are rejected. Explicit assignments clear stale automatic confidence.
-Assignment and metadata changes use one atomic transaction-document update.
+Transaction create/update participates in the owner coverage lock and Mongo
+transaction. Transactional database support is required; failures return sanitized
+503 without partial-write fallback.
 The source of an imported transaction remains gmail; matchingSource is separate.
 The matcher already preserves manual status/source and import deduplication
 continues to use insert-only persistence.

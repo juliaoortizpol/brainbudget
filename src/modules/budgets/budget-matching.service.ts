@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { MerchantNormalizationService } from '@/modules/transactions/merchant-normalization.service';
 import { Transaction } from '@/modules/transactions/schemas/transaction.schema';
 import { BudgetMatchingContext } from './budget-matching-context.service';
+import { budgetCoversPurchase } from './budget-coverage';
 
 type MatchableTransaction = Pick<
   Transaction,
@@ -32,8 +33,7 @@ export class BudgetMatchingService {
               budget.userId.toString() === transaction.userId.toString() &&
               budget.status === 'active' &&
               !budget.isDeleted &&
-              budget.startDate <= transaction.date &&
-              budget.endDate >= transaction.date,
+              budgetCoversPurchase(budget, transaction.date),
           )
         : [];
     const budgetIds = new Set(budgets.map((budget) => budget._id.toString()));

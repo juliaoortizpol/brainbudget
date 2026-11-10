@@ -25,7 +25,7 @@ describe('transaction review query', () => {
     },
   ];
 
-  function setup() {
+  function setup(budget?: Record<string, unknown>) {
     const chain = {
       sort: jest.fn().mockReturnThis(),
       skip: jest.fn().mockReturnThis(),
@@ -38,7 +38,11 @@ describe('transaction review query', () => {
     });
     const service = new TransactionsService(
       { find, countDocuments } as unknown as Model<TransactionDocument>,
-      {} as Model<BudgetDocument>,
+      {
+        findOne: jest.fn(() => ({
+          exec: () => Promise.resolve(budget ?? null),
+        })),
+      } as unknown as Model<BudgetDocument>,
       {} as Model<BudgetItemDocument>,
     );
     return { service, find, countDocuments, chain };
@@ -118,6 +122,59 @@ describe('transaction review query', () => {
     });
     expect(chain.skip).toHaveBeenCalledWith(0);
     expect(chain.limit).toHaveBeenCalledWith(10);
+  });
+
+  it('uses open or exclusive closed budget coverage identically for review data/count and history', async () => {
+    for (const actualCutoffDate of [
+      undefined,
+      new Date('2025-01-02T12:34:56.789Z'),
+    ]) {
+      const startDate = new Date('2024-11-01T04:00:00Z');
+      const { service, find, countDocuments } = setup({
+        coverageVersion: 1,
+        timezone: 'America/La_Paz',
+        startDate,
+        endDate: new Date('2024-12-01T04:00:00Z'),
+        actualCutoffDate,
+      });
+      await service.findAll(userId, {
+        budgetId: budgetItemId,
+        matchingStatus: 'needs_review',
+      });
+      const expectedDate = {
+        $gte: startDate,
+        ...(actualCutoffDate ? { $lt: actualCutoffDate } : {}),
+      };
+      expect(find).toHaveBeenCalledWith({
+        userId: new Types.ObjectId(userId),
+        $and: reviewPredicate,
+        date: expectedDate,
+      });
+      expect(countDocuments).toHaveBeenCalledWith({
+        userId: new Types.ObjectId(userId),
+        $and: reviewPredicate,
+        date: expectedDate,
+      });
+      find.mockClear();
+      await service.findAll(userId, { budgetId: budgetItemId });
+      expect(find).toHaveBeenCalledWith({
+        userId: new Types.ObjectId(userId),
+        date: expectedDate,
+      });
+    }
+  });
+  it('rejects unavailable/foreign budget periods and ambiguous mixed date filters', async () => {
+    const { service, find } = setup();
+    await expect(
+      service.findAll(userId, { budgetId: budgetItemId }),
+    ).rejects.toThrow('Budget is unavailable');
+    await expect(
+      service.findAll(userId, {
+        budgetId: budgetItemId,
+        endDate: '2024-12-01',
+      }),
+    ).rejects.toThrow('not both');
+    expect(find).not.toHaveBeenCalled();
   });
 
   it('demonstrates why legacy eligibility must use stored values before hydration', () => {
