@@ -53,6 +53,11 @@ export class CreateBudgetItemDto {
 }
 
 export class CreateBudgetDto {
+  /** Explicit acknowledgement also resolves an owned legacy planning context. */
+  @ValidateIf((_, value) => value !== undefined)
+  @IsEnum(['DOP'])
+  currency?: string;
+
   @IsString()
   @IsNotEmpty()
   name!: string;

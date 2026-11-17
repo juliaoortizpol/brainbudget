@@ -58,6 +58,7 @@ export class TransactionMailPersistenceService {
                 ),
                 date: transaction.transactionDate,
                 type: transaction.type,
+                currency: transaction.currency,
               } as Transaction,
               context,
             );
@@ -81,6 +82,8 @@ export class TransactionMailPersistenceService {
                     amount: transaction.amount,
                     type: transaction.type,
                     currency: transaction.currency,
+                    currencyContextVersion: 1,
+                    currencyOrigin: 'mail-parser',
                     relationCode: transaction.reference,
                     date: transaction.transactionDate,
                     source: TransactionSource.GMAIL,

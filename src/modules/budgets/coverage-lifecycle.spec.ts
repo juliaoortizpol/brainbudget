@@ -14,6 +14,8 @@ describe('coverage lifecycle (controlled persistence)', () => {
   const itemId = new Types.ObjectId();
   const now = new Date('2025-01-04T12:34:56.789Z');
   const base = {
+    currencyContext: { version: 1, currency: 'DOP', origin: 'dop-v1-planning' },
+
     _id: id,
     userId: owner,
     name: 'Synthetic November',
@@ -28,6 +30,7 @@ describe('coverage lifecycle (controlled persistence)', () => {
   let current: Record<string, unknown>;
   let others: Record<string, unknown>[];
   let outside: Record<string, unknown>[];
+  let currencyRows: Record<string, unknown>[];
   let written: jest.Mock<
     unknown,
     [unknown, { $set: { actualCutoffDate: Date } }, unknown]
@@ -45,6 +48,7 @@ describe('coverage lifecycle (controlled persistence)', () => {
     current = { ...base };
     others = [];
     outside = [];
+    currencyRows = [];
     connection = coverageTestConnection();
     written = jest.fn<
       unknown,
@@ -67,11 +71,52 @@ describe('coverage lifecycle (controlled persistence)', () => {
     service = new BudgetsService(
       Budgets as never,
       { find: () => query([{ _id: itemId }]) } as never,
-      { find: () => query(outside), aggregate } as never,
+      {
+        find: (filter: { currency?: unknown }) =>
+          query(filter.currency ? currencyRows : outside),
+        aggregate,
+      } as never,
     );
     jest.spyOn(service, 'findOne').mockResolvedValue({} as never);
   });
   afterEach(() => jest.useRealTimers());
+
+  it.each(['USD', undefined])(
+    'TC2/TC5 blocks closure for owned %s purchase evidence without writes',
+    async (currency) => {
+      currencyRows = [
+        { _id: new Types.ObjectId(), budgetItemId: itemId, currency },
+      ];
+      await expect(
+        service.update(String(id), String(owner), { status: 'closed' }),
+      ).rejects.toThrow('Currency issues block closing');
+      expect(written).not.toHaveBeenCalled();
+    },
+  );
+
+  it('TC5 requires explicit planning resolution without rewriting transactions', async () => {
+    delete current.currencyContext;
+    await expect(
+      service.update(String(id), String(owner), { status: 'closed' }),
+    ).rejects.toThrow('Resolve budget planning currency');
+    await service.update(String(id), String(owner), {
+      currency: 'DOP',
+      status: 'closed',
+    });
+    expect(written).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        $set: expect.objectContaining({
+          currencyContext: {
+            version: 1,
+            currency: 'DOP',
+            origin: 'explicit-resolution',
+          },
+        }) as unknown,
+      },
+      expect.anything(),
+    );
+  });
 
   it('defaults close to the confirmed instant and preserves history without any transaction/item mutation', async () => {
     await service.update(String(id), String(owner), { status: 'closed' });
@@ -168,6 +213,11 @@ describe('coverage lifecycle (controlled persistence)', () => {
         status: 'draft',
         userId: owner,
         coverageVersion: 1,
+        currencyContext: {
+          version: 1,
+          currency: 'DOP',
+          origin: 'dop-v1-planning',
+        },
       }),
     );
     expect(written).not.toHaveBeenCalled();
@@ -220,6 +270,7 @@ describe('coverage lifecycle (controlled persistence)', () => {
       new MerchantNormalizationService(),
     );
     const transaction = {
+      currency: 'DOP',
       userId: owner,
       date: new Date('2024-12-20T12:00:00Z'),
       name: 'Synthetic Shop',
@@ -284,6 +335,8 @@ describe('coverage ValidationPipe contract', () => {
     ).resolves.toMatchObject({ status: 'closed' });
   });
   it.each([
+    { currency: 'USD' },
+    { currency: null },
     { actualCutoffDate: null },
     { timezone: null },
     { startDate: null },

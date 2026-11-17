@@ -7,9 +7,15 @@ import {
   IsEnum,
   IsDateString,
   Min,
+  Matches,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateTransactionDto {
+  @ValidateIf((_, value) => value !== undefined)
+  @Matches(/^[A-Z]{3}$/)
+  currency?: string;
+
   @IsMongoId()
   @IsOptional()
   accountId?: string;

@@ -16,6 +16,10 @@ import {
   coverageDateFilter,
 } from '../budgets/budget-coverage';
 import { coverageWrite } from '../budgets/coverage-write';
+import {
+  currencyIssue,
+  supportedBudgetCurrency,
+} from '../budgets/currency-policy';
 import { Transaction, TransactionDocument } from './schemas/transaction.schema';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
@@ -40,6 +44,7 @@ export class TransactionsService {
     itemId: string,
     type: string,
     date: Date,
+    currency: unknown,
     session?: ClientSession,
   ) {
     const item = await this.items
@@ -74,6 +79,17 @@ export class TransactionsService {
     if (budget.status !== 'active') {
       throw new BadRequestException('Budget must be active for assignment');
     }
+    if (!supportedBudgetCurrency(budget.currencyContext))
+      throw new BadRequestException(
+        'Resolve budget planning currency explicitly as DOP before assignment',
+      );
+    const issue = currencyIssue(currency);
+    if (issue)
+      throw new BadRequestException(
+        issue === 'unknown_currency'
+          ? 'Transaction currency is unknown; explicitly correct the purchase currency before assignment'
+          : 'Only DOP transactions can be assigned; keep unsupported purchases for review without conversion',
+      );
     if (item.type !== type) {
       throw new BadRequestException(
         'Budget item type must match transaction type',
@@ -92,6 +108,7 @@ export class TransactionsService {
     dto: UpdateTransactionDto,
     type: string,
     date: Date,
+    currency: unknown,
     session?: ClientSession,
   ) {
     const assigned = typeof dto.budgetItemId === 'string';
@@ -112,6 +129,7 @@ export class TransactionsService {
         dto.budgetItemId!,
         type,
         date,
+        currency,
         session,
       );
     }
@@ -143,11 +161,18 @@ export class TransactionsService {
       createTransactionDto,
       createTransactionDto.type,
       createTransactionDto.date,
+      createTransactionDto.currency ?? 'DOP',
       session,
     );
     const createdTransaction = new this.transactionModel({
       ...createTransactionDto,
       ...assignment,
+      currency: createTransactionDto.currency ?? 'DOP',
+      currencyContextVersion: 1,
+      currencyOrigin:
+        createTransactionDto.currency === undefined
+          ? 'manual-default'
+          : 'explicit',
       userId: new Types.ObjectId(userId),
       accountId: createTransactionDto.accountId
         ? new Types.ObjectId(createTransactionDto.accountId)
@@ -319,6 +344,7 @@ export class TransactionsService {
           dto.budgetItemId!,
           'expense',
           dto.date ?? current.date,
+          dto.currency ?? current.currency,
           activeSession,
         );
         const normalization = new MerchantNormalizationService();
@@ -393,6 +419,10 @@ export class TransactionsService {
     void rememberMerchant;
     void merchantKeyword;
     const updateData: Record<string, unknown> = { ...transactionFields };
+    if (updateTransactionDto.currency !== undefined) {
+      updateData.currencyContextVersion = 1;
+      updateData.currencyOrigin = 'explicit-resolution';
+    }
     const unset: Record<string, 1> = {};
     const filter: Record<string, unknown> = {
       _id: new Types.ObjectId(id),
@@ -402,6 +432,7 @@ export class TransactionsService {
       typeof updateTransactionDto.budgetItemId === 'string' ||
       (updateTransactionDto.budgetItemId === undefined &&
         (updateTransactionDto.date !== undefined ||
+          updateTransactionDto.currency !== undefined ||
           updateTransactionDto.type !== undefined));
     let current: Transaction | undefined;
     if (checksAssignment) {
@@ -415,6 +446,7 @@ export class TransactionsService {
       Object.assign(filter, {
         date: current.date,
         type: current.type,
+        currency: current.currency ?? null,
         budgetItemId: current.budgetItemId ?? null,
       });
       if (
@@ -426,6 +458,7 @@ export class TransactionsService {
           current.budgetItemId.toString(),
           updateTransactionDto.type ?? current.type,
           updateTransactionDto.date ?? current.date,
+          updateTransactionDto.currency ?? current.currency,
           session,
         );
       }
@@ -436,6 +469,7 @@ export class TransactionsService {
         updateTransactionDto,
         updateTransactionDto.type ?? current?.type ?? '',
         updateTransactionDto.date ?? current?.date ?? new Date(NaN),
+        updateTransactionDto.currency ?? current?.currency,
         session,
       );
       Object.assign(updateData, assignment);

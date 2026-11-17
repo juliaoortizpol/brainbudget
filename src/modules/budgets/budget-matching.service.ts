@@ -4,6 +4,7 @@ import { MerchantNormalizationService } from '@/modules/transactions/merchant-no
 import { Transaction } from '@/modules/transactions/schemas/transaction.schema';
 import { BudgetMatchingContext } from './budget-matching-context.service';
 import { budgetCoversPurchase } from './budget-coverage';
+import { currencyIssue, supportedBudgetCurrency } from './currency-policy';
 
 type MatchableTransaction = Pick<
   Transaction,
@@ -30,6 +31,8 @@ export class BudgetMatchingService {
       context.userId.toString() === transaction.userId.toString()
         ? context.budgets.filter(
             (budget) =>
+              !currencyIssue(transaction.currency) &&
+              supportedBudgetCurrency(budget.currencyContext) &&
               budget.userId.toString() === transaction.userId.toString() &&
               budget.status === 'active' &&
               !budget.isDeleted &&

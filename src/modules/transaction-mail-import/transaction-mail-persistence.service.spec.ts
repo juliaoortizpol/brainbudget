@@ -161,6 +161,99 @@ describe('TransactionMailPersistenceService', () => {
     );
   });
 
+  it.each(['DOP', 'USD', undefined])(
+    'TC3 preserves parser currency %s and repeat-import manual corrections',
+    async (currency) => {
+      const owner = new Types.ObjectId(userId);
+      const budgetId = new Types.ObjectId();
+      const itemId = new Types.ObjectId();
+      let stored: Record<string, unknown> | undefined;
+      const transactionModel = {
+        db: coverageTestConnection(),
+        updateOne: jest.fn(
+          (
+            _filter: unknown,
+            update: { $setOnInsert: Record<string, unknown> },
+          ) => ({
+            exec: () => {
+              if (stored) return Promise.resolve({ upsertedCount: 0 });
+              stored = { ...update.$setOnInsert };
+              return Promise.resolve({ upsertedCount: 1 });
+            },
+          }),
+        ),
+      };
+      const normalization = new MerchantNormalizationService();
+      const context = {
+        userId: owner,
+        budgets: [
+          {
+            _id: budgetId,
+            userId: owner,
+            status: 'active',
+            startDate: new Date('2026-07-01'),
+            endDate: new Date('2026-07-31'),
+            currencyContext: {
+              version: 1,
+              currency: 'DOP',
+              origin: 'dop-v1-planning',
+            },
+          },
+        ],
+        items: [
+          {
+            _id: itemId,
+            budgetId,
+            userId: owner,
+            type: 'expense',
+            matchingRules: [
+              {
+                id: 'synthetic',
+                field: 'description',
+                operator: 'equals',
+                value: 'APPLE.COM/BILL',
+                source: 'user',
+              },
+            ],
+          },
+        ],
+      };
+      const service = new TransactionMailPersistenceService(
+        transactionModel as never,
+        normalization,
+        new BudgetMatchingService(normalization),
+        { load: jest.fn().mockResolvedValue(context) } as never,
+      );
+      const input = {
+        ...envelope,
+        transaction: { ...envelope.transaction, currency },
+      } as MatchedMailTransactionEnvelope;
+      expect((await service.save(userId, [input])).transactionsCreated).toBe(1);
+      expect(stored).toMatchObject({
+        currency,
+        currencyOrigin: 'mail-parser',
+        matchingStatus: currency === 'DOP' ? 'matched' : 'needs_review',
+      });
+      expect(stored?.budgetItemId).toEqual(
+        currency === 'DOP' ? itemId : undefined,
+      );
+      stored = {
+        ...stored,
+        matchingStatus: 'manual',
+        budgetItemId: new Types.ObjectId(),
+        currency: 'DOP',
+      };
+      const corrected = { ...stored };
+      expect((await service.save(userId, [input])).duplicatesSkipped).toBe(1);
+      expect(stored).toEqual(corrected);
+      expect(
+        transactionModel.updateOne.mock.calls.every(
+          (call) => Object.keys(call[1]).join() === '$setOnInsert',
+        ),
+      ).toBe(true);
+    },
+  );
+
   it('counts an existing upsert target as a duplicate', async () => {
     const transactionModel = {
       db: coverageTestConnection(),

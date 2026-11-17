@@ -18,6 +18,11 @@ describe('BudgetsService spent calculation', () => {
           },
         ]);
       const budget = {
+        currencyContext: {
+          version: 1,
+          currency: 'DOP',
+          origin: 'dop-v1-planning',
+        },
         userId: new Types.ObjectId('69e7e32d72be00b046f1b706'),
         startDate: new Date('2026-07-01T00:00:00.000Z'),
         endDate: new Date('2026-07-31T23:59:59.999Z'),
@@ -77,7 +82,21 @@ describe('BudgetsService spent calculation', () => {
           {
             $group: {
               _id: '$normalizedBudgetItemId',
-              totalSpent: { $sum: { $abs: '$amount' } },
+              totalSpent: {
+                $sum: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ['$currency', 'DOP'] },
+                        { $eq: ['$type', 'expense'] },
+                      ],
+                    },
+                    { $abs: '$amount' },
+                    0,
+                  ],
+                },
+              },
+              currencyIssues: expect.any(Object) as unknown,
             },
           },
         ]),

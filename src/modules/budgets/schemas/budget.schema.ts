@@ -1,11 +1,18 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 import { User } from '@/modules/users/schemas/user.schema';
+import {
+  BudgetCurrencyContext,
+  BudgetCurrencyContextSchema,
+} from '../currency-policy';
 
 export type BudgetDocument = HydratedDocument<Budget>;
 
 @Schema({ timestamps: true })
 export class Budget {
+  @Prop({ type: BudgetCurrencyContextSchema })
+  currencyContext?: BudgetCurrencyContext;
+
   @Prop({ type: Types.ObjectId, ref: User.name, required: true })
   userId!: Types.ObjectId;
 

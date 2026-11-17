@@ -20,7 +20,8 @@ transaction removal currently uses physical deletion.
 ## Requirements and open decisions
 Trello acceptance criteria govern each change. This inventory describes code,
 not a claim that every feature has passed end-to-end QA.
-Currency conversion, monetary storage policy and reporting-period timezone rules
-need explicit requirements before changing existing calculations.
+Budget planning uses approved DOP-only V1 with no conversion; unsupported/unknown
+purchases remain explicit and block finalization. See [currency policy](budget-currency.md).
+Additional currencies and monetary storage changes need explicit requirements.
 Do not infer transfer, recurring-payment or bank synchronization capabilities
 from naming alone. Gmail mail import is not a direct bank API connection.

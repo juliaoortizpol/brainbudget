@@ -162,6 +162,10 @@ describe('Budget item keyword persistence', () => {
       status: 'draft',
       timezone: 'UTC',
       items: [],
+      actualsCurrency: 'DOP',
+      actualsComplete: true,
+      currencyIssues: [],
+      currencyContextResolved: true,
     });
     await service.create(userId, {
       timezone: 'UTC',

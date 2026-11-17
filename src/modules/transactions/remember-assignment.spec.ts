@@ -48,6 +48,7 @@ describe('remember assignment (controlled persistence)', () => {
       },
     ];
     transaction = {
+      currency: 'DOP',
       userId,
       date: new Date('2026-11-03'),
       type: 'expense',
@@ -138,6 +139,12 @@ describe('remember assignment (controlled persistence)', () => {
       findOne: jest.fn(() =>
         query({
           status: 'active',
+          currencyContext: {
+            version: 1,
+            currency: 'DOP',
+            origin: 'dop-v1-planning',
+          },
+
           startDate: new Date('2026-11-01'),
           endDate: new Date('2026-11-30'),
         }),
@@ -254,6 +261,21 @@ describe('remember assignment (controlled persistence)', () => {
     },
   );
 
+  it.each(['USD', undefined])(
+    'TC3 currency %s rejects learning and assignment together',
+    async (currency) => {
+      transaction.currency = currency;
+      const before = { ...transaction };
+      await expect(
+        service.update(String(id), String(userId), request),
+      ).rejects.toThrow(/currency|DOP/);
+      expect(itemWrite).not.toHaveBeenCalled();
+      expect(transactionWrite).not.toHaveBeenCalled();
+      expect(transaction).toEqual(before);
+      expect(rules).toHaveLength(1);
+    },
+  );
+
   it.each(['transaction', 'item', 'income', 'clear', 'limit'] as const)(
     'rejects invalid %s without mutation',
     async (scenario) => {
@@ -308,6 +330,12 @@ describe('remember assignment (controlled persistence)', () => {
           _id: budgetId,
           userId,
           status: 'active',
+          currencyContext: {
+            version: 1,
+            currency: 'DOP',
+            origin: 'dop-v1-planning',
+          },
+
           startDate: new Date('2026-11-01'),
           endDate: new Date('2026-11-30'),
         },
@@ -323,6 +351,7 @@ describe('remember assignment (controlled persistence)', () => {
       ],
     } as unknown as BudgetMatchingContext;
     const future = {
+      currency: 'DOP',
       userId,
       date: new Date('2026-11-04'),
       type: 'expense',

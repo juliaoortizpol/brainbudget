@@ -51,7 +51,8 @@ as-of-now ceiling: future purchases do not count before their purchase instant,
 while a closed budget still excludes purchases at or after its final cutoff.
 HTTP date fields reject impossible calendar dates rather than normalizing them.
 Spending retains absolute expense
-amounts, ObjectId normalization and two-decimal rounding; currency policy is unchanged.
+amounts, ObjectId normalization and two-decimal rounding. BE4 adds the
+[DOP-only currency policy](budget-currency.md) and blocks closing unresolved periods.
 Assignment still requires owned live items/active parents and compatible types.
 Closed history retains saved links/manual metadata.
 

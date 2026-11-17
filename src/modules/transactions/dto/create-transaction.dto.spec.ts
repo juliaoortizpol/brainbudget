@@ -29,6 +29,34 @@ describe('Transaction matching metadata', () => {
     ).resolves.toEqual(transaction);
   });
 
+  it.each(['DOP', 'USD'])(
+    'TC1 preserves explicit %s through create and update validation',
+    async (currency) => {
+      for (const metatype of [CreateTransactionDto, UpdateTransactionDto]) {
+        await expect(
+          pipe.transform(
+            { ...transaction, currency },
+            { type: 'body', metatype },
+          ),
+        ).resolves.toMatchObject({ currency });
+      }
+    },
+  );
+
+  it.each([null, '', 'dop', ' DOP ', 'UNKNOWN', 123])(
+    'TC1 rejects invalid currency %j instead of defaulting or relabelling it',
+    async (currency) => {
+      for (const metatype of [CreateTransactionDto, UpdateTransactionDto]) {
+        await expect(
+          pipe.transform(
+            { ...transaction, currency },
+            { type: 'body', metatype },
+          ),
+        ).rejects.toThrow();
+      }
+    },
+  );
+
   it('accepts the frontend create payload without matching metadata', async () => {
     const withoutStatus = {
       name: transaction.name,

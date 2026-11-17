@@ -24,14 +24,27 @@ import { CreateBudgetDto, CreateBudgetItemDto } from './dto/create-budget.dto';
 import { UpdateBudgetItemDto } from './dto/update-budget-item.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 import { matchingRulesError } from './matching-rule-validation';
+import {
+  CurrencyIssue,
+  currencyIssue,
+  dopPlanningContext,
+  supportedBudgetCurrency,
+} from './currency-policy';
 
 export type BudgetItemWithSpent = BudgetItem & {
   _id: Types.ObjectId;
   spent: number;
+  spentCurrency: 'DOP';
+  actualsComplete: boolean;
+  currencyIssues: CurrencyIssue[];
 };
 export type BudgetWithItems = Budget & {
   _id: Types.ObjectId;
   items: BudgetItemWithSpent[];
+  actualsCurrency: 'DOP';
+  actualsComplete: boolean;
+  currencyIssues: CurrencyIssue[];
+  currencyContextResolved: boolean;
 };
 
 @Injectable()
@@ -109,7 +122,7 @@ export class BudgetsService {
 
         return {
           ...budget.toObject<Budget & { _id: Types.ObjectId }>(),
-          items,
+          ...items,
         };
       }),
     );
@@ -138,7 +151,7 @@ export class BudgetsService {
 
     return {
       ...budget.toObject<Budget & { _id: Types.ObjectId }>(),
-      items,
+      ...items,
     };
   }
 
@@ -161,6 +174,14 @@ export class BudgetsService {
         )
         .exec();
       if (!current) throw new NotFoundException(`Budget #${id} not found`);
+      if (
+        budgetData.currency !== undefined &&
+        current.status === 'closed' &&
+        current.currencyContext
+      )
+        throw new BadRequestException(
+          'Closed budget currency context cannot be changed',
+        );
       const changesCoverage = [
         'status',
         'startDate',
@@ -193,6 +214,12 @@ export class BudgetsService {
         current.coverageVersion === 1
           ? this.lifecycleData(budgetData, current)
           : budgetData;
+      if (budgetData.currency === 'DOP')
+        (data as Budget).currencyContext = {
+          version: 1,
+          currency: 'DOP',
+          origin: 'explicit-resolution',
+        };
       if (current.coverageVersion === 1)
         await this.validateLifecycle(userId, data as Budget, current, session);
       await this.budgetModel
@@ -363,10 +390,12 @@ export class BudgetsService {
             actualCutoffDate: current.actualCutoffDate,
             closedAt: current.closedAt,
             timezone: current.timezone,
+            currencyContext: current.currencyContext,
           }
         : {}),
       ...dto,
       coverageVersion: 1,
+      ...(!current ? { currencyContext: dopPlanningContext() } : {}),
     } as unknown as Budget;
     data.startDate = new Date(dto.startDate ?? current?.startDate ?? NaN);
     if (
@@ -459,6 +488,35 @@ export class BudgetsService {
       }
     }
     if (!current) return;
+    if (data.status === 'closed' && current.status !== 'closed') {
+      const context = data.currencyContext;
+      if (!supportedBudgetCurrency(context))
+        throw new BadRequestException(
+          'Resolve budget planning currency explicitly as DOP before closing',
+        );
+      const unresolved = await this.transactionModel
+        .find(
+          {
+            userId: owner,
+            date: coverageDateFilter(budgetCoverage(data)),
+            currency: { $ne: 'DOP' },
+          },
+          { _id: 1, budgetItemId: 1, currency: 1 },
+          { session },
+        )
+        .exec();
+      if (unresolved.length)
+        throw new BadRequestException({
+          message:
+            'Currency issues block closing; explicitly correct purchase currencies. Unsupported currencies cannot be converted or relabelled as DOP',
+          currencyIssues: unresolved.map((t) => ({
+            transactionId: t._id.toString(),
+            budgetItemId: t.budgetItemId?.toString() ?? null,
+            currency: t.currency ?? null,
+            code: currencyIssue(t.currency),
+          })),
+        });
+    }
     const items = await this.budgetItemModel
       .find({ budgetId: current._id, userId: owner }, null, { session })
       .exec();
@@ -508,18 +566,24 @@ export class BudgetsService {
   private async appendSpentToItems(
     budget: Budget,
     budgetItems: BudgetItemDocument[],
-  ): Promise<BudgetItemWithSpent[]> {
-    if (!budgetItems.length) return [];
-
+  ): Promise<
+    Pick<
+      BudgetWithItems,
+      | 'items'
+      | 'actualsCurrency'
+      | 'actualsComplete'
+      | 'currencyIssues'
+      | 'currencyContextResolved'
+    >
+  > {
     const transactions = await this.transactionModel.aggregate<{
-      _id: Types.ObjectId;
+      _id: Types.ObjectId | null;
       totalSpent: number;
+      currencyIssues?: (CurrencyIssue | null)[];
     }>([
       {
         $match: {
           userId: budget.userId,
-          type: 'expense',
-          budgetItemId: { $exists: true },
           date: {
             ...coverageDateFilter(budgetCoverage(budget)),
             $lte: new Date(),
@@ -539,29 +603,79 @@ export class BudgetsService {
         },
       },
       {
-        $match: {
-          normalizedBudgetItemId: {
-            $in: budgetItems.map((item) => item._id),
-          },
-        },
-      },
-      {
         $group: {
           _id: '$normalizedBudgetItemId',
-          totalSpent: { $sum: { $abs: '$amount' } },
+          totalSpent: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$currency', 'DOP'] },
+                    { $eq: ['$type', 'expense'] },
+                  ],
+                },
+                { $abs: '$amount' },
+                0,
+              ],
+            },
+          },
+          currencyIssues: {
+            $push: {
+              $cond: [
+                { $eq: ['$currency', 'DOP'] },
+                null,
+                {
+                  transactionId: { $toString: '$_id' },
+                  budgetItemId: {
+                    $convert: {
+                      input: '$budgetItemId',
+                      to: 'string',
+                      onError: null,
+                      onNull: null,
+                    },
+                  },
+                  currency: { $ifNull: ['$currency', null] },
+                },
+              ],
+            },
+          },
         },
       },
     ]);
 
     const spentMap = new Map<string, number>();
     for (const t of transactions) {
-      spentMap.set(t._id.toString(), t.totalSpent);
+      if (t._id) spentMap.set(t._id.toString(), t.totalSpent);
     }
-
-    return budgetItems.map((item) => ({
-      ...item.toObject<BudgetItem & { _id: Types.ObjectId }>(),
-      spent: this.roundCurrency(spentMap.get(item._id.toString()) || 0),
-    }));
+    const currencyIssues = transactions
+      .flatMap((t) =>
+        (t.currencyIssues ?? []).filter(
+          (issue): issue is CurrencyIssue => issue !== null,
+        ),
+      )
+      .map((issue) => ({ ...issue, code: currencyIssue(issue.currency)! }));
+    const currencyContextResolved = supportedBudgetCurrency(
+      budget.currencyContext,
+    );
+    return {
+      actualsCurrency: 'DOP',
+      currencyContextResolved,
+      actualsComplete: currencyContextResolved && currencyIssues.length === 0,
+      currencyIssues,
+      items: budgetItems.map((item) => ({
+        ...item.toObject<BudgetItem & { _id: Types.ObjectId }>(),
+        spent: this.roundCurrency(spentMap.get(item._id.toString()) || 0),
+        spentCurrency: 'DOP' as const,
+        actualsComplete:
+          currencyContextResolved &&
+          !currencyIssues.some(
+            (issue) => issue.budgetItemId === item._id.toString(),
+          ),
+        currencyIssues: currencyIssues.filter(
+          (issue) => issue.budgetItemId === item._id.toString(),
+        ),
+      })),
+    };
   }
 
   private roundCurrency(value: number): number {

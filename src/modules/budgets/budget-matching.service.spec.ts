@@ -24,6 +24,8 @@ describe('BudgetMatchingService', () => {
   };
   const service = new BudgetMatchingService(new MerchantNormalizationService());
   const budget = {
+    currencyContext: { version: 1, currency: 'DOP', origin: 'dop-v1-planning' },
+
     _id: budgetId,
     userId,
     status: 'active',
@@ -41,6 +43,7 @@ describe('BudgetMatchingService', () => {
       items: items as BudgetMatchingContext['items'],
     });
   const transaction = () => ({
+    currency: 'DOP',
     userId,
     date: new Date('2026-10-07'),
     type: 'expense',
@@ -55,6 +58,28 @@ describe('BudgetMatchingService', () => {
       matchingSource: 'rule',
       normalizedMerchant: 'uber',
     });
+  });
+
+  it.each(['USD', undefined, '', 'dop'])(
+    'TC3 retains unsupported/unknown %s purchases for review',
+    (currency) => {
+      expect(match({ ...transaction(), currency }, [item])).toMatchObject({
+        currency,
+        matchingStatus: 'needs_review',
+        budgetItemId: undefined,
+      });
+    },
+  );
+
+  it('TC3 preserves a previous manual choice even when currency needs review', () => {
+    const manual = {
+      ...transaction(),
+      currency: 'USD',
+      budgetItemId: item._id,
+      matchingStatus: 'manual' as const,
+    };
+    expect(match(manual, [item])).toBe(manual);
+    expect(manual.budgetItemId).toBe(item._id);
   });
 
   it.each([

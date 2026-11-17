@@ -39,12 +39,19 @@ describe('manual transaction assignments', () => {
   beforeEach(() => {
     saved = {};
     current = {
+      currency: 'DOP',
       ...payload,
       date: new Date(payload.date),
       budgetItemId: new Types.ObjectId(itemId),
     };
     item = { budgetId: new Types.ObjectId(), type: 'expense' };
     budget = {
+      currencyContext: {
+        version: 1,
+        currency: 'DOP',
+        origin: 'dop-v1-planning',
+      },
+
       status: 'active',
       coverageVersion: 1,
       timezone: 'UTC',
@@ -95,6 +102,68 @@ describe('manual transaction assignments', () => {
     await service.create(userId, dto);
     expect(saved.matchingStatus).toBe('needs_review');
     expect(saved.budgetItemId).toBeUndefined();
+    expect(saved).toMatchObject({
+      currency: 'DOP',
+      currencyOrigin: 'manual-default',
+      currencyContextVersion: 1,
+    });
+  });
+
+  it.each(['DOP', 'USD'])(
+    'TC1 preserves explicit %s on unassigned creation',
+    async (currency) => {
+      await service.create(
+        userId,
+        plainToInstance(CreateTransactionDto, { ...payload, currency }),
+      );
+      expect(saved).toMatchObject({
+        currency,
+        currencyOrigin: 'explicit',
+        currencyContextVersion: 1,
+      });
+    },
+  );
+
+  it.each(['USD', undefined, 'invalid'])(
+    'TC3 rejects %s assignment before any write or learning',
+    async (currency) => {
+      current.currency = currency;
+      const before = { ...current };
+      await expect(
+        service.update(id, userId, { budgetItemId: itemId }),
+      ).rejects.toThrow(/currency|DOP/);
+      expect(update).not.toHaveBeenCalled();
+      expect(current).toEqual(before);
+    },
+  );
+
+  it('TC3 rejects currency changes retaining assignment, but allows explicit clearing', async () => {
+    await expect(
+      service.update(id, userId, { currency: 'USD' }),
+    ).rejects.toThrow('Only DOP');
+    expect(update).not.toHaveBeenCalled();
+    await service.update(id, userId, { currency: 'USD', budgetItemId: null });
+    expect(update.mock.calls[0][1]).toMatchObject({
+      $set: { currency: 'USD', currencyOrigin: 'explicit-resolution' },
+      $unset: { budgetItemId: 1 },
+    });
+  });
+
+  it('TC5 ordinary legacy edits do not add a currency; explicit correction enables assignment', async () => {
+    delete current.currency;
+    await service.update(id, userId, { notes: 'Synthetic legacy note' });
+    expect(update.mock.calls[0][1]).toEqual({
+      $set: { notes: 'Synthetic legacy note' },
+    });
+    await service.update(id, userId, { currency: 'DOP', budgetItemId: itemId });
+    expect(update.mock.calls[1][1]).toMatchObject({
+      $set: {
+        currency: 'DOP',
+        currencyOrigin: 'explicit-resolution',
+        matchingStatus: 'manual',
+      },
+    });
+    expect(current.currency).toBeUndefined();
   });
 
   it('creates an explicit manual assignment and scopes reference checks to the owner', async () => {
@@ -195,6 +264,7 @@ describe('manual transaction assignments', () => {
         _id: new Types.ObjectId(id),
         userId: new Types.ObjectId(userId),
         date: current.date,
+        currency: current.currency,
         type: current.type,
         budgetItemId: current.budgetItemId,
       },

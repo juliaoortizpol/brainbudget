@@ -31,8 +31,16 @@ export class Transaction {
   @Prop({ required: true, enum: ['expense', 'income'] })
   type!: string;
 
-  @Prop({ uppercase: true, trim: true })
+  @Prop()
   currency?: string;
+
+  @Prop({ enum: [1] })
+  currencyContextVersion?: number;
+
+  @Prop({
+    enum: ['manual-default', 'explicit', 'mail-parser', 'explicit-resolution'],
+  })
+  currencyOrigin?: string;
 
   @Prop()
   relationCode?: string;
