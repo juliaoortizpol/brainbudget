@@ -21,6 +21,9 @@ Transactions use number amounts, date, expense/income type and optional currency
 Gmail persistence uses upsert with $setOnInsert and a unique partial index on
 userId/source/sourceMessageId. Preserve idempotency and account matching semantics.
 Budget aggregation and rounding live in BudgetsService.appendSpentToItems.
+The [DOP V1 currency contract](budget-currency.md) defines creation-only defaults,
+owned excluded-purchase evidence and report validation context; no account-derived
+historical currency or conversion is supported.
 
 ## Integration
 Frontend requests use JWT Bearer authentication. The frontend dev proxy strips

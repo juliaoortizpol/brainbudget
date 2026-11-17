@@ -44,6 +44,10 @@ is a separate admin step and is not claimed as active by this PR.
 
 ## QA
 
+BE4 currency regressions and the pending real HTTP/Mongo matrix are described in
+[budget currency](budget-currency.md). Controlled aggregation and schema round-trip
+tests do not establish real persistence or account-edit integration evidence.
+
 Budget rule validation and the pending persisted API matrix are documented in
 [budget matching rules](budget-matching-rules.md).
 Expense review query policy and the persisted synthetic API verification matrix

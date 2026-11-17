@@ -3,6 +3,11 @@ import { Document, Types } from 'mongoose';
 import { User } from '@/modules/users/schemas/user.schema';
 import { Budget } from '@/modules/budgets/schemas/budget.schema';
 import { BudgetItem } from '@/modules/budgets/schemas/budget-item.schema';
+import {
+  ReportCurrencyContext,
+  ReportCurrencyContextSchema,
+  reportCurrencyError,
+} from './report-currency-context.schema';
 
 export type BudgetPeriodReportDocument = BudgetPeriodReport & Document;
 
@@ -41,6 +46,18 @@ class ReportItem {
 
 @Schema({ timestamps: { createdAt: true, updatedAt: false } })
 export class BudgetPeriodReport {
+  @Prop({
+    type: ReportCurrencyContextSchema,
+    required: true,
+    validate: {
+      validator: (context: ReportCurrencyContext) =>
+        !reportCurrencyError(context),
+      message:
+        'Resolve explicit DOP currency context and purchase evidence before report finalization',
+    },
+  })
+  currencyContext!: ReportCurrencyContext;
+
   @Prop({ type: Types.ObjectId, ref: Budget.name, required: true })
   budgetId!: Types.ObjectId;
 
