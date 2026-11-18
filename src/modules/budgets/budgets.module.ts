@@ -1,3 +1,4 @@
+import { ClosedPeriodHistoryModule } from '../reports/closed-period-history.module';
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BudgetsService } from './budgets.service';
@@ -10,10 +11,6 @@ import { TransactionsModule } from '@/modules/transactions/transactions.module';
 import { BudgetReportsController } from '../reports/budget-reports.controller';
 import { BudgetReportsService } from '../reports/budget-reports.service';
 import {
-  BudgetPeriodReport,
-  BudgetPeriodReportSchema,
-} from '../reports/schemas/budget-period-report.schema';
-import {
   Transaction,
   TransactionSchema,
 } from '@/modules/transactions/schemas/transaction.schema';
@@ -21,11 +18,11 @@ import {
 @Module({
   imports: [
     TransactionsModule,
+    ClosedPeriodHistoryModule,
     MongooseModule.forFeature([
       { name: Budget.name, schema: BudgetSchema },
       { name: BudgetItem.name, schema: BudgetItemSchema },
       { name: Transaction.name, schema: TransactionSchema },
-      { name: BudgetPeriodReport.name, schema: BudgetPeriodReportSchema },
     ]),
   ],
   controllers: [BudgetsController, BudgetReportsController],

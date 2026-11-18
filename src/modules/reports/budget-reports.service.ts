@@ -23,6 +23,7 @@ import {
 import { BudgetItem } from '../budgets/schemas/budget-item.schema';
 import { Budget } from '../budgets/schemas/budget.schema';
 import { Transaction } from '../transactions/schemas/transaction.schema';
+import { transactionEvidence } from './transaction-evidence';
 import { ClosePreviewDto, ConfirmCloseDto } from './close-budget.dto';
 import {
   BudgetPeriodReport,
@@ -247,28 +248,7 @@ export class BudgetReportsService {
             (row.type === 'expense' ? Math.abs(row.amount) : row.amount),
         );
 
-      transactions.push({
-        ...evidence,
-        date: row.date,
-        name: row.name,
-        amount: row.amount,
-        type: row.type,
-        currency: row.currency ?? null,
-        currencyContextVersion: row.currencyContextVersion,
-        currencyOrigin: row.currencyOrigin,
-        accountId: row.accountId?.toString(),
-        source: row.source,
-        sourceMessageId: row.sourceMessageId,
-        parserKey: row.parserKey,
-        parserVersion: row.parserVersion,
-        matchingStatus: row.matchingStatus,
-        matchingSource: row.matchingSource,
-        matchingConfidence: row.matchingConfidence,
-        rawDescription: row.rawDescription,
-        normalizedMerchant: row.normalizedMerchant,
-        relationCode: row.relationCode,
-        notes: row.notes,
-      });
+      transactions.push(transactionEvidence(row._id, row));
     }
 
     const items = liveItems.map((item) => {

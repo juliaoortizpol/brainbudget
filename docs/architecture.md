@@ -9,10 +9,13 @@ src/config/validate-environment.ts validates environment configuration.
 Beta/production enable throttling; bootstrap enables Helmet for those environments.
 
 src/modules contains accounts, auth, budgets, users, transactions, institutions,
-gmail-reader, transaction-mail-import and report schemas. Controllers expose HTTP
+gmail-reader, transaction-mail-import and budget reports. Controllers expose HTTP
 interfaces, DTOs validate inputs, services perform work, schemas define persistence.
 Some imports use @/ mapped to src; build runs tsc-alias after Nest compilation.
-Report schemas alone do not establish a complete reporting API.
+Report reads use the saved close snapshot. The shared closed-period history
+service lets transaction and mail persistence write exceptions in the same
+owner-coordinated Mongo transaction as the live purchase. See the
+[close and report contracts](budget-close-reports.md).
 
 ## Data and contracts
 MongoDB is accessed through Mongoose. User identifiers are Mongo ObjectIds.

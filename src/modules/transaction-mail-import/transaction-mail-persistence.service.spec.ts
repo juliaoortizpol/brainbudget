@@ -1,3 +1,4 @@
+import { ClosedPeriodHistoryService } from '../reports/closed-period-history.service';
 import { coverageTestConnection } from '../../../test/coverage-test-support';
 import { BudgetMatchingContextService } from '@/modules/budgets/budget-matching-context.service';
 import { Types } from 'mongoose';
@@ -66,6 +67,11 @@ describe('TransactionMailPersistenceService', () => {
           typeof BudgetMatchingContextService
         >[1],
       ),
+      {
+        links: jest.fn().mockResolvedValue([]),
+        isCovered: jest.fn().mockReturnValue(false),
+        record: jest.fn().mockResolvedValue(undefined),
+      } as unknown as ClosedPeriodHistoryService,
     );
     const result = await service.save(
       userId,
@@ -123,6 +129,11 @@ describe('TransactionMailPersistenceService', () => {
       {
         load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),
       } as unknown as BudgetMatchingContextService,
+      {
+        links: jest.fn().mockResolvedValue([]),
+        isCovered: jest.fn().mockReturnValue(false),
+        record: jest.fn().mockResolvedValue(undefined),
+      } as unknown as ClosedPeriodHistoryService,
     );
 
     const result = await service.save(userId, [envelope]);
@@ -223,6 +234,11 @@ describe('TransactionMailPersistenceService', () => {
         normalization,
         new BudgetMatchingService(normalization),
         { load: jest.fn().mockResolvedValue(context) } as never,
+        {
+          links: jest.fn().mockResolvedValue([]),
+          isCovered: jest.fn().mockReturnValue(false),
+          record: jest.fn().mockResolvedValue(undefined),
+        } as unknown as ClosedPeriodHistoryService,
       );
       const input = {
         ...envelope,
@@ -254,6 +270,71 @@ describe('TransactionMailPersistenceService', () => {
     },
   );
 
+  it('TC4/TC9 keeps an imported arrival out of matching after close and audits only new inserts', async () => {
+    const insertedId = new Types.ObjectId();
+    const connection = coverageTestConnection();
+    const exec = jest
+      .fn()
+      .mockResolvedValueOnce({ upsertedCount: 1, upsertedId: insertedId })
+      .mockResolvedValue({ upsertedCount: 0 });
+    const updateOne = jest.fn().mockReturnValue({ exec });
+    const links = [{ _id: new Types.ObjectId() }];
+    const history = {
+      links: jest.fn().mockResolvedValue(links),
+      isCovered: jest.fn().mockReturnValue(true),
+      record: jest.fn().mockResolvedValue(undefined),
+    };
+    const load = jest.fn();
+    const matchTransaction = jest.fn();
+    const service = new TransactionMailPersistenceService(
+      { db: connection, updateOne } as never,
+      new MerchantNormalizationService(),
+      { matchTransaction } as never,
+      { load } as never,
+      history as unknown as ClosedPeriodHistoryService,
+    );
+    const result = await service.save(userId, [envelope, envelope]);
+    expect(result).toMatchObject({
+      transactionsCreated: 1,
+      duplicatesSkipped: 1,
+      transactionsFailed: 0,
+    });
+    expect(load).not.toHaveBeenCalled();
+    expect(matchTransaction).not.toHaveBeenCalled();
+    expect(history.links).toHaveBeenCalledWith(
+      new Types.ObjectId(userId),
+      [envelope.transaction.transactionDate],
+      connection.session,
+    );
+    expect(connection.lock.mock.invocationCallOrder[0]).toBeLessThan(
+      history.links.mock.invocationCallOrder[0],
+    );
+    expect(history.record).toHaveBeenCalledTimes(1);
+    expect(history.record).toHaveBeenCalledWith(
+      new Types.ObjectId(userId),
+      insertedId,
+      links,
+      null,
+      expect.objectContaining({
+        matchingStatus: 'needs_review',
+        budgetItemId: undefined,
+        sourceMessageId: envelope.messageId,
+      }),
+      connection.session,
+    );
+    history.record.mockRejectedValueOnce(
+      new Error('Injected exception save failure'),
+    );
+    exec.mockResolvedValueOnce({
+      upsertedCount: 1,
+      upsertedId: new Types.ObjectId(),
+    });
+    expect(await service.save(userId, [envelope])).toMatchObject({
+      transactionsFailed: 1,
+      transactionsCreated: 0,
+    });
+  });
+
   it('counts an existing upsert target as a duplicate', async () => {
     const transactionModel = {
       db: coverageTestConnection(),
@@ -277,6 +358,11 @@ describe('TransactionMailPersistenceService', () => {
       {
         load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),
       } as unknown as BudgetMatchingContextService,
+      {
+        links: jest.fn().mockResolvedValue([]),
+        isCovered: jest.fn().mockReturnValue(false),
+        record: jest.fn().mockResolvedValue(undefined),
+      } as unknown as ClosedPeriodHistoryService,
     );
 
     const result = await service.save(userId, [envelope]);
@@ -308,6 +394,11 @@ describe('TransactionMailPersistenceService', () => {
       {
         load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),
       } as unknown as BudgetMatchingContextService,
+      {
+        links: jest.fn().mockResolvedValue([]),
+        isCovered: jest.fn().mockReturnValue(false),
+        record: jest.fn().mockResolvedValue(undefined),
+      } as unknown as ClosedPeriodHistoryService,
     );
 
     const result = await service.save(userId, [envelope]);
@@ -339,6 +430,11 @@ describe('TransactionMailPersistenceService', () => {
       {
         load: jest.fn().mockResolvedValue({ budgets: [], items: [] }),
       } as unknown as BudgetMatchingContextService,
+      {
+        links: jest.fn().mockResolvedValue([]),
+        isCovered: jest.fn().mockReturnValue(false),
+        record: jest.fn().mockResolvedValue(undefined),
+      } as unknown as ClosedPeriodHistoryService,
     );
 
     const result = await service.save(userId, [envelope]);

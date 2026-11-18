@@ -1,3 +1,4 @@
+import { ClosedPeriodHistoryService } from '../reports/closed-period-history.service';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Model, Types } from 'mongoose';
@@ -118,6 +119,7 @@ describe('remember assignment (controlled persistence)', () => {
       },
       findOne: jest.fn(() => query(transactionAvailable ? transaction : null)),
       findOneAndUpdate: transactionWrite,
+      hydrate: (row: unknown) => row,
     };
     const items = {
       findOne: jest.fn(() =>
@@ -154,6 +156,12 @@ describe('remember assignment (controlled persistence)', () => {
       transactions as unknown as Model<TransactionDocument>,
       budgets as unknown as Model<BudgetDocument>,
       items as unknown as Model<BudgetItemDocument>,
+      {
+        links: jest.fn().mockResolvedValue([]),
+        isCovered: jest.fn().mockReturnValue(false),
+        record: jest.fn().mockResolvedValue(undefined),
+        transactionIdsWithExceptions: jest.fn().mockResolvedValue(new Set()),
+      } as unknown as ClosedPeriodHistoryService,
     );
   });
 

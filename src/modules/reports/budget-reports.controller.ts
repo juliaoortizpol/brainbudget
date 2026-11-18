@@ -1,16 +1,15 @@
+import { ReportPageDto } from './report-page.dto';
+import { ClosedPeriodHistoryService } from './closed-period-history.service';
 import {
   Body,
   Controller,
-  DefaultValuePipe,
   Get,
   HttpCode,
   Param,
-  ParseIntPipe,
   Post,
   Query,
   Request,
   UseGuards,
-  BadRequestException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from '@/common/types/authenticated-request';
@@ -20,7 +19,10 @@ import { ClosePreviewDto, ConfirmCloseDto } from './close-budget.dto';
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class BudgetReportsController {
-  constructor(private readonly reports: BudgetReportsService) {}
+  constructor(
+    private readonly reports: BudgetReportsService,
+    private readonly closedHistory: ClosedPeriodHistoryService,
+  ) {}
 
   @Post('budgets/:id/close-preview')
   @HttpCode(200)
@@ -45,25 +47,23 @@ export class BudgetReportsController {
   @Get('budget-reports')
   history(
     @Request() req: AuthenticatedRequest,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @Query() { page, limit }: ReportPageDto,
   ) {
-    if (
-      !Number.isSafeInteger(page) ||
-      page < 1 ||
-      limit < 1 ||
-      limit > 100 ||
-      !Number.isSafeInteger((page - 1) * limit)
-    )
-      throw new BadRequestException(
-        'Use a positive page and a limit from 1 to 100',
-      );
     return this.reports.history(req.user.userId, page, limit);
   }
 
   @Get('budget-reports/:id')
   detail(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.reports.detail(req.user.userId, id);
+  }
+
+  @Get('budget-reports/:id/exceptions')
+  exceptions(
+    @Request() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Query() { page, limit }: ReportPageDto,
+  ) {
+    return this.closedHistory.listForReport(req.user.userId, id, page, limit);
   }
 
   @Get('budget-reports/:id/transactions/:transactionId')

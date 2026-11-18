@@ -1,3 +1,4 @@
+import { ClosedPeriodHistoryService } from '../reports/closed-period-history.service';
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -44,6 +45,12 @@ describe('transaction review query', () => {
         })),
       } as unknown as Model<BudgetDocument>,
       {} as Model<BudgetItemDocument>,
+      {
+        links: jest.fn().mockResolvedValue([]),
+        isCovered: jest.fn().mockReturnValue(false),
+        record: jest.fn().mockResolvedValue(undefined),
+        transactionIdsWithExceptions: jest.fn().mockResolvedValue(new Set()),
+      } as unknown as ClosedPeriodHistoryService,
     );
     return { service, find, countDocuments, chain };
   }

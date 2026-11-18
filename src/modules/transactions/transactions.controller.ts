@@ -1,3 +1,4 @@
+import { ReportPageDto } from '../reports/report-page.dto';
 import type { AuthenticatedRequest } from '@/common/types/authenticated-request';
 import {
   Controller,
@@ -44,6 +45,20 @@ export class TransactionsController {
   @Get(':id')
   findOne(@Request() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.transactionsService.findOne(id, req.user.userId);
+  }
+
+  @Get(':id/closed-period-exceptions')
+  exceptions(
+    @Request() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Query() { page, limit }: ReportPageDto,
+  ) {
+    return this.transactionsService.exceptions(
+      id,
+      req.user.userId,
+      page,
+      limit,
+    );
   }
 
   @Patch(':id')

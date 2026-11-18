@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { ClientSession, Types } from 'mongoose';
+import { ClientSession, mongo, Types } from 'mongoose';
 import { coverageWrite } from './coverage-write';
 import { coverageTestConnection } from '../../../test/coverage-test-support';
 
@@ -21,6 +21,20 @@ describe('owner coverage write protocol (controlled)', () => {
     );
     expect(connection.session.endSession).toHaveBeenCalledTimes(1);
   });
+  it('TC4 retries the first-owner lock insert race before any business write', async () => {
+    const connection = coverageTestConnection();
+    connection.lock.mockRejectedValueOnce(
+      new mongo.MongoServerError({ code: 11000, message: 'Duplicate lock' }),
+    );
+    const work = jest.fn().mockResolvedValue('committed');
+    await expect(coverageWrite(connection as never, owner, work)).resolves.toBe(
+      'committed',
+    );
+    expect(connection.session.withTransaction).toHaveBeenCalledTimes(2);
+    expect(work).toHaveBeenCalledTimes(1);
+    expect(work).toHaveBeenCalledWith(connection.session);
+  });
+
   it('does no work without transaction support and returns a sanitized retry error', async () => {
     const connection = coverageTestConnection();
     connection.session.withTransaction.mockRejectedValue(

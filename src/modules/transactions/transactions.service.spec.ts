@@ -1,3 +1,4 @@
+import { ClosedPeriodHistoryService } from '../reports/closed-period-history.service';
 import { coverageTestConnection } from '../../../test/coverage-test-support';
 import { BadRequestException } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
@@ -32,6 +33,15 @@ describe('manual transaction assignments', () => {
   let items: { findOne: jest.Mock<unknown, [Record<string, unknown>]> };
   let budgets: { findOne: jest.Mock<unknown, [Record<string, unknown>]> };
   let service: TransactionsService;
+  let history: {
+    links: jest.Mock;
+    isCovered: jest.Mock;
+    record: jest.Mock;
+    protectDeletion: jest.Mock;
+    transactionIdsWithExceptions: jest.Mock;
+  };
+  let connection: ReturnType<typeof coverageTestConnection>;
+  let remove: jest.Mock;
   let current: Record<string, unknown>;
   let item: Record<string, unknown> | null;
   let budget: Record<string, unknown> | null;
@@ -58,13 +68,19 @@ describe('manual transaction assignments', () => {
       startDate: new Date('2026-11-01T00:00:00Z'),
       endDate: new Date('2026-11-30T00:00:00Z'),
     };
+    connection = coverageTestConnection();
+    remove = jest
+      .fn()
+      .mockReturnValue({ exec: () => Promise.resolve({ _id: id }) });
     class TransactionModel {
-      static db = coverageTestConnection();
+      static db = connection;
+      static findOneAndDelete = remove;
+      static hydrate = (row: unknown) => row;
       constructor(data: Record<string, unknown>) {
         saved = data;
       }
       save() {
-        return Promise.resolve(saved);
+        return Promise.resolve({ ...saved, _id: new Types.ObjectId(id) });
       }
       static findOne = jest
         .fn()
@@ -89,10 +105,132 @@ describe('manual transaction assignments', () => {
         .fn<unknown, [Record<string, unknown>]>()
         .mockReturnValue({ exec: () => Promise.resolve(budget) }),
     };
+    history = {
+      links: jest.fn().mockResolvedValue([]),
+      isCovered: jest.fn().mockReturnValue(false),
+      record: jest.fn().mockResolvedValue(undefined),
+      protectDeletion: jest.fn().mockResolvedValue(undefined),
+      transactionIdsWithExceptions: jest.fn().mockResolvedValue(new Set()),
+    };
     service = new TransactionsService(
       TransactionModel as unknown as Model<TransactionDocument>,
       budgets as unknown as Model<BudgetDocument>,
       items as unknown as Model<BudgetItemDocument>,
+      history as unknown as ClosedPeriodHistoryService,
+    );
+  });
+
+  it('TC4/TC9 retains a manual create targeting an item whose period finalized first', async () => {
+    const reportBudget = item?.budgetId;
+    budget = { ...budget, status: 'closed', _id: reportBudget };
+    history.links.mockResolvedValue([{ budgetId: reportBudget }]);
+    history.isCovered.mockReturnValue(true);
+    const dto = plainToInstance(CreateTransactionDto, {
+      ...payload,
+      budgetItemId: itemId,
+    });
+    await service.create(userId, dto);
+    expect(saved).toMatchObject({
+      matchingStatus: 'needs_review',
+      budgetItemId: undefined,
+    });
+    expect(history.links).toHaveBeenCalledWith(
+      new Types.ObjectId(userId),
+      [new Date(dto.date)],
+      connection.session,
+    );
+    expect(connection.lock.mock.invocationCallOrder[0]).toBeLessThan(
+      history.links.mock.invocationCallOrder[0],
+    );
+    expect(history.record).toHaveBeenCalledWith(
+      new Types.ObjectId(userId),
+      new Types.ObjectId(id),
+      [{ budgetId: reportBudget }],
+      null,
+      { ...saved, _id: new Types.ObjectId(id) },
+      connection.session,
+    );
+  });
+
+  it('TC4 rejects assignment of a covered purchase after finalization without any write', async () => {
+    history.isCovered.mockReturnValue(true);
+    await expect(
+      service.update(id, userId, { budgetItemId: itemId }),
+    ).rejects.toMatchObject({ response: { code: 'closed_period_assignment' } });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('TC10 permits a date and type correction on a retained closed item without changing its original association', async () => {
+    const reportBudget = item?.budgetId;
+    current.budgetItemId = itemId;
+    budget = { ...budget, status: 'closed', _id: reportBudget };
+    history.links.mockResolvedValue([
+      { budgetId: reportBudget, includedTransactionIds: [id] },
+    ]);
+    const corrected = {
+      type: 'income',
+      date: new Date('2026-12-01T15:00:00Z'),
+    };
+    await service.update(id, userId, corrected);
+    expect(update.mock.calls[0][1]).toEqual({ $set: corrected });
+    expect(update.mock.calls[0][0]).toMatchObject({
+      $expr: {
+        $and: [
+          {
+            $eq: [
+              { $ifNull: ['$currency', null] },
+              { $literal: current.currency },
+            ],
+          },
+          { $eq: [{ $ifNull: ['$budgetItemId', null] }, { $literal: itemId }] },
+        ],
+      },
+    });
+    expect(history.record).toHaveBeenCalledTimes(1);
+  });
+
+  it('TC10 aborts the transaction when writing a correction exception fails', async () => {
+    let committed = false;
+    connection.session.withTransaction.mockImplementation(
+      async (work: () => Promise<unknown>) => {
+        const result = await work();
+        committed = true;
+        return result;
+      },
+    );
+    history.record.mockRejectedValue(
+      new Error('Injected exception save failure'),
+    );
+    await expect(service.update(id, userId, { amount: 20 })).rejects.toThrow(
+      'transactional database required',
+    );
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(history.record).toHaveBeenCalledWith(
+      new Types.ObjectId(userId),
+      new Types.ObjectId(id),
+      [],
+      current,
+      { _id: id },
+      connection.session,
+    );
+    expect(committed).toBe(false);
+  });
+
+  it('TC10 checks history under the owner lock before deletion and keeps ordinary deletion', async () => {
+    history.protectDeletion.mockRejectedValueOnce(
+      new BadRequestException('Report evidence is retained'),
+    );
+    await expect(service.remove(id, userId)).rejects.toThrow(
+      'Report evidence is retained',
+    );
+    expect(remove).not.toHaveBeenCalled();
+    await expect(service.remove(id, userId)).resolves.toBeUndefined();
+    expect(remove).toHaveBeenCalledWith(
+      { _id: new Types.ObjectId(id), userId: new Types.ObjectId(userId) },
+      { session: connection.session },
+    );
+    expect(history.protectDeletion.mock.invocationCallOrder[1]).toBeLessThan(
+      remove.mock.invocationCallOrder[0],
     );
   });
 
@@ -264,9 +402,23 @@ describe('manual transaction assignments', () => {
         _id: new Types.ObjectId(id),
         userId: new Types.ObjectId(userId),
         date: current.date,
-        currency: current.currency,
         type: current.type,
-        budgetItemId: current.budgetItemId,
+        $expr: {
+          $and: [
+            {
+              $eq: [
+                { $ifNull: ['$currency', null] },
+                { $literal: current.currency },
+              ],
+            },
+            {
+              $eq: [
+                { $ifNull: ['$budgetItemId', null] },
+                { $literal: current.budgetItemId },
+              ],
+            },
+          ],
+        },
       },
       {
         $set: {
@@ -280,7 +432,8 @@ describe('manual transaction assignments', () => {
       {
         new: true,
         runValidators: true,
-        session: expect.any(Object) as unknown,
+        session: connection.session,
+        lean: true,
       },
     );
   });
@@ -479,7 +632,22 @@ describe('manual transaction assignments', () => {
       expect(update.mock.calls[0][0]).toMatchObject({
         date: current.date,
         type: current.type,
-        budgetItemId: current.budgetItemId,
+        $expr: {
+          $and: [
+            {
+              $eq: [
+                { $ifNull: ['$currency', null] },
+                { $literal: current.currency },
+              ],
+            },
+            {
+              $eq: [
+                { $ifNull: ['$budgetItemId', null] },
+                { $literal: current.budgetItemId },
+              ],
+            },
+          ],
+        },
       });
     });
   });

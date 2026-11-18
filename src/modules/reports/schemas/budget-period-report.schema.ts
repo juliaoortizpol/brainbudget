@@ -150,3 +150,13 @@ BudgetPeriodReportSchema.index(
   { userId: 1, budgetId: 1 },
   { unique: true, partialFilterExpression: { snapshotVersion: 1 } },
 );
+BudgetPeriodReportSchema.index({
+  userId: 1,
+  snapshotVersion: 1,
+  includedTransactionIds: 1,
+});
+BudgetPeriodReportSchema.index({
+  userId: 1,
+  snapshotVersion: 1,
+  actualCutoffDate: 1,
+});

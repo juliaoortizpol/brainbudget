@@ -46,7 +46,9 @@ learning require supported planning context and exact DOP purchase currency,
 in addition to existing owner/live-item/active-parent/type/date checks. Rejected
 writes do not change assignments or rules. Automatic matching uses the same
 policy and leaves unsupported/unknown imported purchases unassigned for review.
-Existing manual choices are preserved even when their currency needs review;
+A BE5 correction can retain a closed historical assignment with a separate
+audit event. The saved snapshot keeps the original currency evidence. Existing
+manual choices are preserved even when their currency needs review;
 aggregation still excludes those purchases. Import remains insert-only per
 owner/source/message ID: repeat sync never overwrites a manual correction.
 

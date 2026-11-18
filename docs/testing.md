@@ -44,7 +44,7 @@ is a separate admin step and is not claimed as active by this PR.
 
 ## QA
 
-BE5 close/report foundation routes, controlled coverage and pending persisted
+BE5 close/report and exception routes, controlled coverage and pending persisted
 verification are documented in [budget close and reports](budget-close-reports.md).
 
 BE4 currency regressions and the pending real HTTP/Mongo matrix are described in

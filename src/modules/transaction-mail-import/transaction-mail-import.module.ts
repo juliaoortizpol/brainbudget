@@ -1,3 +1,4 @@
+import { ClosedPeriodHistoryModule } from '../reports/closed-period-history.module';
 import { Module } from '@nestjs/common';
 import { BudgetsModule } from '@/modules/budgets/budgets.module';
 import { AccountMailQueryBuilder } from './account-mail-query.builder';
@@ -25,6 +26,7 @@ import { TransactionMailImportController } from './transaction-mail-import.contr
     GmailReaderModule,
     InstitutionMailParsersModule,
     TransactionsModule,
+    ClosedPeriodHistoryModule,
   ],
   providers: [
     AccountMailQueryBuilder,

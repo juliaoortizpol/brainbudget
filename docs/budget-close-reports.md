@@ -9,8 +9,12 @@ All routes require the ordinary owner JWT. Dates in responses are ISO instants.
 | GET /budget-reports | Optional `page` (default 1), `limit` (default 20, max 100) | `{data,page,limit,total}`. Sorts by closure timestamp and budget ID descending. Each budget has `reportStatus`, `reportId` and `totals`. |
 | GET /budget-reports/:id | Final report ID | Final saved report with exact included IDs, saved items, purchase detail and currency context. |
 | GET /budget-reports/:id/transactions/:transactionId | Final report and saved purchase IDs | One saved purchase. |
+| GET /budget-reports/:id/exceptions | Final report ID and optional page and limit | Paginated exceptions for the report. |
+| GET /transactions/:id/closed-period-exceptions | Owned live transaction ID and optional page and limit | Paginated exceptions for the transaction. |
 
-Coverage includes the start and excludes the cutoff. The cutoff must follow the
+Explicit instants require an ISO timestamp with Z or a numeric UTC offset. Use
+closeThroughDate for a calendar day in the saved timezone. Coverage includes
+the start and excludes the cutoff. The cutoff must follow the
 start and cannot be in the future. The planned end remains a planning field and
 can pass while the budget stays active. The old report `endDate` field is an alias
 of the actual cutoff. `closedAt` is the server confirmation time. The preview's
@@ -53,7 +57,43 @@ generated on read. Ordinary Transactions listing and detail retain original
 assignment IDs and add owned `assignmentContext` with item/budget labels when
 the original link can be resolved, including retained soft-deleted records.
 
-This foundation still requires report-linked late-arrival and correction
-exceptions, report-referenced deletion protection, and real synthetic HTTP/Mongo
-verification, including rollback and contention. Local controlled tests exercise
-the service contract without attesting to Mongo isolation.
+Transaction reads with recorded exceptions add `hasClosedPeriodExceptions: true`.
+The dedicated exception endpoints return `{data,page,limit,total}` with the same
+pagination defaults and limits as report history. Entries sort by exception ID
+descending and include `reportId`, `budgetId`, `transactionId`, `createdAt`,
+`kind`, `includedInSnapshot`, `inCoverageAfter` and purchase evidence in `before`
+and `after`. A late arrival has null `before` and never enters the saved snapshot.
+Only the report owner can read the exception. Use the saved report drill-down
+for closing-time evidence and the exception endpoints for subsequent changes.
+
+Manual and Gmail purchases that arrive inside finalized coverage are saved for
+review with no active assignment. If a manual create targeted a valid item in
+that same finalized period, it still saves for review with no assignment.
+Repeat Gmail imports do not create an exception or overwrite the original
+purchase. A purchase exactly at the cutoff is outside the finalized period.
+
+An explicit item assignment inside finalized coverage returns HTTP 409
+`closed_period_assignment`. An included row can retain its historical item
+on a live date, type or currency correction. The change is audited and leaves
+the report untouched. An owner can clear the live link explicitly, or assign
+it to an eligible active item if a verified corrected date is outside finalized
+coverage. The exception preserves the previous live link. Corrections into or
+out of finalized coverage are recorded even for rows outside the included set.
+An unchanged payload does not append an exception. A historical correction
+never converts a currency. Record the verified actual purchase currency.
+
+DELETE /transactions/:id returns HTTP 409
+`closed_period_transaction_retained` for originals referenced by final reports
+or exceptions. Use a live correction. Unrelated transactions keep ordinary
+DELETE behavior. Creates, import upserts, edits, assignments and deletes take
+the same owner lock as close. Late arrival and correction evidence commit in
+the same Mongo transaction as the corresponding purchase write. An exception
+write failure aborts both operations. Imports report such failures as
+`SAVE_FAILED`; the original Gmail message can be retried.
+
+Controlled tests exercise cutoff, reconciliation, stale review, owner scope,
+lock and session ordering, late imports and manual arrivals, duplicate import
+handling, correction evidence and error handling. The persisted synthetic
+HTTP/Mongo matrix still needs real transaction rollback, concurrent writes,
+unique-index enforcement and retained IDs. A report is one Mongo document, so
+an oversized report fails atomically at MongoDB's BSON document limit.

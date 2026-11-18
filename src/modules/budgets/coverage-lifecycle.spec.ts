@@ -7,6 +7,9 @@ import { coverageTestConnection } from '../../../test/coverage-test-support';
 import { BudgetMatchingService } from './budget-matching.service';
 import { MerchantNormalizationService } from '../transactions/merchant-normalization.service';
 import { BudgetMatchingContext } from './budget-matching-context.service';
+import { ClosePreviewDto, ConfirmCloseDto } from '../reports/close-budget.dto';
+import { TransactionsService } from '../transactions/transactions.service';
+import { TransactionMailPersistenceService } from '../transaction-mail-import/transaction-mail-persistence.service';
 import { BudgetReportsService } from '../reports/budget-reports.service';
 import { BudgetPeriodReportSchema } from '../reports/schemas/budget-period-report.schema';
 
@@ -14,6 +17,7 @@ describe('coverage lifecycle (controlled persistence)', () => {
   const owner = new Types.ObjectId();
   const id = new Types.ObjectId();
   const itemId = new Types.ObjectId();
+  const incomeId = new Types.ObjectId();
   const now = new Date('2025-01-04T12:34:56.789Z');
   const base = {
     currencyContext: { version: 1, currency: 'DOP', origin: 'dop-v1-planning' },
@@ -108,6 +112,13 @@ describe('coverage lifecycle (controlled persistence)', () => {
               name: 'Test item',
               type: 'expense',
               plannedAmount: 30,
+            },
+            {
+              _id: incomeId,
+              isDeleted: false,
+              name: 'Synthetic income',
+              type: 'income',
+              plannedAmount: 5.125,
             },
           ]),
       } as never,
@@ -233,7 +244,7 @@ describe('coverage lifecycle (controlled persistence)', () => {
     });
     expect(preview.totals).toMatchObject({
       totalActualExpense: 10.13,
-      totalVariance: 19.87,
+      totalVariance: 14.74,
     });
     const payload = {
       confirmed: true,
@@ -262,7 +273,10 @@ describe('coverage lifecycle (controlled persistence)', () => {
     const [detail] = saved.mock.calls[0] as [unknown];
     const persisted = new Report(detail).toObject();
     expect(persisted).toMatchObject({
-      items: [{ categoryName: 'Test item', type: 'expense', actualAmount: 12 }],
+      items: [
+        { categoryName: 'Test item', type: 'expense', actualAmount: 12 },
+        { categoryName: 'Synthetic income', type: 'income', actualAmount: 0 },
+      ],
       currencyContext: {
         transactions: [
           { transactionId: String(row._id), origin: 'mail-parser' },
@@ -277,6 +291,211 @@ describe('coverage lifecycle (controlled persistence)', () => {
     expect(saved).toHaveBeenCalledTimes(1);
     expect(written).toHaveBeenCalledTimes(1);
   });
+
+  it('TC1/TC6 reconciles signed income and absolute expenses in the same snapshot', async () => {
+    outside = [
+      {
+        _id: new Types.ObjectId(),
+        date: base.startDate,
+        budgetItemId: itemId,
+        type: 'expense',
+        amount: -2.125,
+        currency: 'DOP',
+      },
+      {
+        _id: new Types.ObjectId(),
+        date: base.startDate,
+        budgetItemId: incomeId,
+        type: 'income',
+        amount: 10.125,
+        currency: 'DOP',
+      },
+      {
+        _id: new Types.ObjectId(),
+        date: base.startDate,
+        budgetItemId: incomeId,
+        type: 'income',
+        amount: -2,
+        currency: 'DOP',
+      },
+    ];
+    const preview = await reports.preview(String(id), String(owner), {});
+    expect(preview.blockers).toEqual([]);
+    const result = await reports.confirm(String(id), String(owner), {
+      confirmed: true,
+      previewToken: preview.previewToken,
+      actualCutoffDate: now.toISOString(),
+    });
+    expect(result.closedAt).toEqual(now);
+    const [detail] = saved.mock.calls[0] as [unknown];
+    expect(new Report(detail).toObject()).toMatchObject({
+      totals: {
+        totalPlanned: 35.13,
+        totalActualIncome: 8.13,
+        totalActualExpense: 2.13,
+        totalVariance: 30.87,
+      },
+      includedTransactionIds: outside.map((row) => String(row._id)),
+      items: [
+        { actualAmount: 2.13, variance: 27.87 },
+        { actualAmount: 8.13, variance: 3 },
+      ],
+    });
+  });
+
+  it.each(['2025-01-03', '2025-01-03T12:30:00'])(
+    'TC1 rejects offsetless explicit cutoff %s at the DTO boundary',
+    async (actualCutoffDate) => {
+      const pipe = new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      });
+      await expect(
+        pipe.transform(
+          { actualCutoffDate },
+          { type: 'body', metatype: ClosePreviewDto },
+        ),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        pipe.transform(
+          { confirmed: true, previewToken: 'a'.repeat(64), actualCutoffDate },
+          { type: 'body', metatype: ConfirmCloseDto },
+        ),
+      ).rejects.toThrow(BadRequestException);
+    },
+  );
+
+  it('TC3 propagates a failed report save and never writes closed status', async () => {
+    const preview = await reports.preview(String(id), String(owner), {});
+    saved.mockImplementationOnce(() => {
+      throw new Error('Injected report save failure');
+    });
+    await expect(
+      reports.confirm(String(id), String(owner), {
+        confirmed: true,
+        previewToken: preview.previewToken,
+        actualCutoffDate: now.toISOString(),
+      }),
+    ).rejects.toThrow('transactional database required');
+    expect(written).not.toHaveBeenCalled();
+  });
+
+  it.each(['import', 'assignment'])(
+    'TC4 rechecks source after a concurrent %s wins the controlled owner lock',
+    async (operation) => {
+      const transactionId = new Types.ObjectId();
+      const row = {
+        _id: transactionId,
+        date: base.startDate,
+        type: 'expense',
+        currency: 'DOP',
+        name: 'Synthetic purchase',
+        amount: 20,
+      };
+      if (operation === 'assignment') outside = [row];
+      const preview = await reports.preview(String(id), String(owner), {});
+      // Controlled serial schedule. Real Mongo write conflicts are verified separately.
+      let pending: Promise<unknown> = Promise.resolve();
+      connection.session.withTransaction.mockImplementation(
+        (work: () => Promise<unknown>) => {
+          const operation = pending.then(work);
+          pending = operation.catch(() => undefined);
+          return operation;
+        },
+      );
+      const history = {
+        links: jest.fn().mockResolvedValue([]),
+        isCovered: jest.fn().mockReturnValue(false),
+        record: jest.fn().mockResolvedValue(undefined),
+      };
+      const normalization = new MerchantNormalizationService();
+      const transaction = new TransactionsService(
+        {
+          db: connection,
+          findOne: () => query(row),
+          hydrate: (row: unknown) => row,
+          findOneAndUpdate: () => {
+            const assigned = {
+              ...row,
+              budgetItemId: itemId,
+              matchingStatus: 'manual',
+            };
+            outside = [assigned];
+            return query(assigned);
+          },
+        } as never,
+        { findOne: () => query(current) } as never,
+        {
+          findOne: () => query({ _id: itemId, budgetId: id, type: 'expense' }),
+        } as never,
+        history as never,
+      );
+      const gmail = new TransactionMailPersistenceService(
+        {
+          db: connection,
+          updateOne: () => {
+            outside = [
+              { ...row, budgetItemId: itemId, matchingStatus: 'matched' },
+            ];
+            return query({ upsertedCount: 1, upsertedId: transactionId });
+          },
+        } as never,
+        normalization,
+        {
+          matchTransaction: () => ({
+            budgetItemId: itemId,
+            matchingStatus: 'matched',
+          }),
+        } as never,
+        { load: () => Promise.resolve({}) } as never,
+        history as never,
+      );
+      const write =
+        operation === 'import'
+          ? gmail.save(String(owner), [
+              {
+                accountId: String(new Types.ObjectId()),
+                messageId: 'synthetic-mail',
+                parserKey: 'synthetic',
+                parserVersion: 1,
+                transaction: {
+                  description: row.name,
+                  amount: row.amount,
+                  currency: 'DOP',
+                  type: 'expense',
+                  transactionDate: row.date,
+                  institutionId: String(new Types.ObjectId()),
+                  accountType: 'credit_card',
+                  accountLast4: '1234',
+                },
+              },
+            ])
+          : transaction.update(String(transactionId), String(owner), {
+              budgetItemId: String(itemId),
+            });
+      const close = reports.confirm(String(id), String(owner), {
+        confirmed: true,
+        previewToken: preview.previewToken,
+        actualCutoffDate: now.toISOString(),
+      });
+      await Promise.all([
+        write,
+        expect(close).rejects.toThrow('Coverage or source evidence changed'),
+      ]);
+      expect(saved).not.toHaveBeenCalled();
+      expect(written).not.toHaveBeenCalled();
+      const fresh = await reports.preview(String(id), String(owner), {});
+      expect(fresh.includedTransactionIds).toEqual([String(transactionId)]);
+      expect(fresh.blockers).toEqual([]);
+      await reports.confirm(String(id), String(owner), {
+        confirmed: true,
+        previewToken: fresh.previewToken,
+        actualCutoffDate: now.toISOString(),
+      });
+      expect(saved).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it('TC3 rejects the old status path before attempting a write', async () => {
     await expect(
