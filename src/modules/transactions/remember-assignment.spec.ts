@@ -284,6 +284,26 @@ describe('remember assignment (controlled persistence)', () => {
     },
   );
 
+  it('TC2 rejects relabelling a parser-backed USD purchase before learning or assignment writes', async () => {
+    Object.assign(transaction, {
+      currency: 'USD',
+      currencyOrigin: 'mail-parser',
+      currencyContextVersion: 1,
+      amount: 20,
+    });
+    const before = { ...transaction };
+    await expect(
+      service.update(String(id), String(userId), {
+        ...request,
+        currency: 'DOP',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'purchase_currency_locked' } });
+    expect(itemWrite).not.toHaveBeenCalled();
+    expect(transactionWrite).not.toHaveBeenCalled();
+    expect(transaction).toEqual(before);
+    expect(rules).toHaveLength(1);
+  });
+
   it.each(['transaction', 'item', 'income', 'clear', 'limit'] as const)(
     'rejects invalid %s without mutation',
     async (scenario) => {

@@ -72,13 +72,16 @@ acknowledgement once; an already contextualized closed budget rejects currency
 edits with `Closed budget currency context cannot be changed`. This changes no
 coverage boundaries and does not resolve missing legacy lifecycle decisions.
 
-PATCH /transactions/:id with the verified actual purchase `currency` records
-version 1 and `explicit-resolution`. This is an explicit owner correction,
-never an account-derived historical inference. An unknown purchase may be
-corrected to DOP and assigned in one atomic request. If the verified purchase is
-USD, retain USD, optionally clear an old assignment in that same PATCH, and keep
-it for review. Do not relabel it as DOP or invent a converted amount. An ordinary
-account edit never changes purchase or report currency evidence.
+PATCH /transactions/:id can resolve unknown currency with the verified purchase
+`currency`, recording version 1 and `explicit-resolution`. An unknown purchase may
+be resolved to DOP and assigned in one atomic request. If verification identifies
+USD, save USD and keep the purchase for review. The request may clear an old
+assignment at the same time. Once a purchase has a known currency, PATCH with a
+different currency returns HTTP 409 `purchase_currency_locked` and rejects the
+entire request, including assignment and merchant learning. Sending the same
+currency preserves its stored origin and version, including absent legacy
+metadata. Any assignment included with that request still runs ordinary checks.
+An ordinary account edit never changes purchase or report currency evidence.
 
 Closing checks all owned transactions in the proposed final coverage, including
 income and unassigned rows. Missing planning context returns

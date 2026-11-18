@@ -37,6 +37,11 @@ Use `blockers` to guide the owner. `resolve_budget_lifecycle` and
 currency must be verified explicitly and genuine unsupported currency prevents
 closure. `unassigned`, `invalid_assignment`, `assignment_type_conflict` and
 `assignment_outside_cutoff` require reviewing the owned transaction or cutoff.
+PATCH /transactions/:id returns HTTP 409 `purchase_currency_locked` if a request
+would replace a known purchase currency. The entire edit is rejected. A fresh
+preview still exposes the unsupported purchase, and confirmation remains
+blocked. Resubmitting the same currency preserves its evidence. An owner can
+resolve unknown currency explicitly and then preview and confirm again.
 Amount/type errors indicate invalid stored figures and require correction.
 The error payload identifies affected owned rows and excludes raw purchase
 descriptions and account metadata.
@@ -74,13 +79,13 @@ purchase. A purchase exactly at the cutoff is outside the finalized period.
 
 An explicit item assignment inside finalized coverage returns HTTP 409
 `closed_period_assignment`. An included row can retain its historical item
-on a live date, type or currency correction. The change is audited and leaves
+on a live date or type correction. The change is audited and leaves
 the report untouched. An owner can clear the live link explicitly, or assign
 it to an eligible active item if a verified corrected date is outside finalized
 coverage. The exception preserves the previous live link. Corrections into or
 out of finalized coverage are recorded even for rows outside the included set.
 An unchanged payload does not append an exception. A historical correction
-never converts a currency. Record the verified actual purchase currency.
+never converts a currency.
 
 DELETE /transactions/:id returns HTTP 409
 `closed_period_transaction_retained` for originals referenced by final reports

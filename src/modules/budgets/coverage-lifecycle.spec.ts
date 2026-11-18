@@ -46,7 +46,7 @@ describe('coverage lifecycle (controlled persistence)', () => {
   let connection: ReturnType<typeof coverageTestConnection>;
   let service: BudgetsService;
   let reports: BudgetReportsService;
-  let saved: jest.Mock;
+  let saved: jest.Mock<void, [unknown, unknown]>;
   let priorReport: unknown;
   const Report = model('ControlledCloseReport', BudgetPeriodReportSchema);
   const query = (value: unknown) => ({
@@ -89,7 +89,7 @@ describe('coverage lifecycle (controlled persistence)', () => {
         aggregate,
       } as never,
     );
-    saved = jest.fn();
+    saved = jest.fn<void, [unknown, unknown]>();
     priorReport = null;
     class Reports {
       static findOne = () => query(priorReport);
@@ -128,6 +128,135 @@ describe('coverage lifecycle (controlled persistence)', () => {
     jest.spyOn(service, 'findOne').mockResolvedValue({} as never);
   });
   afterEach(() => jest.useRealTimers());
+
+  it.each([
+    { original: 'USD', origin: 'mail-parser', requested: 'DOP', blocked: true },
+    {
+      original: 'DOP',
+      origin: 'mail-parser',
+      requested: 'DOP',
+      blocked: false,
+    },
+    {
+      original: undefined,
+      origin: undefined,
+      requested: 'DOP',
+      blocked: false,
+    },
+  ])(
+    'TC2/TC6 preserves currency evidence when updating $original to $requested and assigning an item',
+    async ({ original, origin, requested, blocked }) => {
+      const transactionId = new Types.ObjectId();
+      outside = [
+        {
+          _id: transactionId,
+          date: new Date('2024-12-02T00:00:00Z'),
+          type: 'expense',
+          name: 'Synthetic Gmail purchase',
+          source: 'gmail',
+          amount: 20,
+          currency: original,
+          currencyOrigin: origin,
+          currencyContextVersion: origin ? 1 : undefined,
+        },
+      ];
+      const write = jest.fn((_filter: unknown, update: { $set: object }) => {
+        outside = [{ ...outside[0], ...update.$set }];
+        return query(outside[0]);
+      });
+      const record = jest.fn().mockResolvedValue(undefined);
+      const transactions = new TransactionsService(
+        {
+          db: connection,
+          findOne: () => query(outside[0]),
+          findOneAndUpdate: write,
+          hydrate: (row: unknown) => row,
+        } as never,
+        { findOne: () => query(current) } as never,
+        {
+          findOne: () => query({ _id: itemId, budgetId: id, type: 'expense' }),
+        } as never,
+        {
+          links: () => Promise.resolve([]),
+          isCovered: () => false,
+          record,
+        } as never,
+      );
+      const before = await reports.preview(String(id), String(owner), {});
+      const mutation = transactions.update(
+        String(transactionId),
+        String(owner),
+        {
+          currency: requested,
+          budgetItemId: String(itemId),
+        },
+      );
+      if (blocked) {
+        await expect(mutation).rejects.toMatchObject({
+          response: { code: 'purchase_currency_locked' },
+        });
+        expect(write).not.toHaveBeenCalled();
+        expect(record).not.toHaveBeenCalled();
+        expect(outside[0]).toMatchObject({
+          currency: original,
+          currencyOrigin: origin,
+          amount: 20,
+        });
+        expect(outside[0]).not.toHaveProperty('budgetItemId');
+      } else {
+        await expect(mutation).resolves.toMatchObject({
+          currency: 'DOP',
+          currencyOrigin: origin ?? 'explicit-resolution',
+          budgetItemId: itemId,
+        });
+      }
+      const fresh = await reports.preview(String(id), String(owner), {});
+      expect(fresh.includedTransactionIds).toEqual([String(transactionId)]);
+      const confirm = (previewToken: string) =>
+        reports.confirm(String(id), String(owner), {
+          confirmed: true,
+          previewToken,
+          actualCutoffDate: now.toISOString(),
+        });
+      if (blocked) {
+        expect(fresh.blockers.map(({ code }) => code)).toEqual([
+          'unsupported_currency',
+          'unassigned',
+        ]);
+        expect(fresh.previewToken).toBe(before.previewToken);
+        await expect(confirm(fresh.previewToken)).rejects.toMatchObject({
+          response: { code: 'close_blocked' },
+        });
+        expect(saved).not.toHaveBeenCalled();
+        expect(written).not.toHaveBeenCalled();
+      } else {
+        await expect(confirm(before.previewToken)).rejects.toMatchObject({
+          response: { code: 'stale_close_preview' },
+        });
+        expect(fresh.blockers).toEqual([]);
+        await expect(confirm(fresh.previewToken)).resolves.toHaveProperty(
+          'reportId',
+        );
+        expect(saved).toHaveBeenCalledTimes(1);
+        const [snapshot, options] = saved.mock.calls[0];
+        expect(snapshot).toMatchObject({
+          totals: { totalActualExpense: 20 },
+          currencyContext: {
+            transactions: [
+              {
+                transactionId: String(transactionId),
+                budgetItemId: String(itemId),
+                currency: 'DOP',
+                version: 1,
+                origin: origin ?? 'explicit-resolution',
+              },
+            ],
+          },
+        });
+        expect(options).toEqual({ session: connection.session });
+      }
+    },
+  );
 
   it.each(['USD', undefined])(
     'TC2/TC5 blocks closure for owned %s purchase evidence without writes',
@@ -270,7 +399,7 @@ describe('coverage lifecycle (controlled persistence)', () => {
       String(owner),
       confirmation,
     );
-    const [detail] = saved.mock.calls[0] as [unknown];
+    const [detail] = saved.mock.calls[0];
     const persisted = new Report(detail).toObject();
     expect(persisted).toMatchObject({
       items: [
@@ -327,7 +456,7 @@ describe('coverage lifecycle (controlled persistence)', () => {
       actualCutoffDate: now.toISOString(),
     });
     expect(result.closedAt).toEqual(now);
-    const [detail] = saved.mock.calls[0] as [unknown];
+    const [detail] = saved.mock.calls[0];
     expect(new Report(detail).toObject()).toMatchObject({
       totals: {
         totalPlanned: 35.13,

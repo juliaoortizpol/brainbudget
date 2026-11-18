@@ -275,7 +275,13 @@ describe('manual transaction assignments', () => {
     },
   );
 
-  it('TC3 rejects currency changes retaining assignment, but allows explicit clearing', async () => {
+  it('TC2 protects known currency even when clearing the item and allows unknown-to-USD with explicit clearing', async () => {
+    await expect(
+      service.update(id, userId, { currency: 'USD', budgetItemId: null }),
+    ).rejects.toMatchObject({ response: { code: 'purchase_currency_locked' } });
+    expect(update).not.toHaveBeenCalled();
+
+    delete current.currency;
     await expect(
       service.update(id, userId, { currency: 'USD' }),
     ).rejects.toThrow('Only DOP');

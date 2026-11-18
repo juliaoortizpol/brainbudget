@@ -30,6 +30,24 @@ import {
   BudgetItemDocument,
 } from '../budgets/schemas/budget-item.schema';
 
+function correctedPurchaseCurrency(
+  current: string | undefined,
+  requested: string | undefined,
+): string | undefined {
+  if (
+    requested !== undefined &&
+    requested !== current &&
+    currencyIssue(current) !== 'unknown_currency'
+  ) {
+    throw new ConflictException({
+      code: 'purchase_currency_locked',
+      message:
+        'Keep the recorded purchase currency. Only unknown currency can be resolved.',
+    });
+  }
+  return requested ?? current;
+}
+
 @Injectable()
 export class TransactionsService {
   constructor(
@@ -472,7 +490,7 @@ export class TransactionsService {
       dto.budgetItemId,
       'expense',
       dto.date ?? current.date,
-      dto.currency ?? current.currency,
+      correctedPurchaseCurrency(current.currency, dto.currency),
       session,
     );
     const normalization = new MerchantNormalizationService();
@@ -533,25 +551,34 @@ export class TransactionsService {
     void rememberMerchant;
     void merchantKeyword;
     const updateData: Record<string, unknown> = { ...transactionFields };
-    if (updateTransactionDto.currency !== undefined) {
-      updateData.currencyContextVersion = 1;
-      updateData.currencyOrigin = 'explicit-resolution';
-    }
     const unset: Record<string, 1> = {};
     const filter = {
       _id: new Types.ObjectId(id),
       userId: new Types.ObjectId(userId),
     };
-    const checksAssignment =
-      typeof updateTransactionDto.budgetItemId === 'string' ||
-      (updateTransactionDto.budgetItemId === undefined &&
-        (updateTransactionDto.date !== undefined ||
-          updateTransactionDto.currency !== undefined ||
-          updateTransactionDto.type !== undefined));
     const current = await this.transactionModel
       .findOne(filter, null, { session, lean: true })
       .exec();
     if (!current) throw new NotFoundException('Transaction is unavailable');
+    const currency = correctedPurchaseCurrency(
+      current.currency,
+      updateTransactionDto.currency,
+    );
+    const resolvesCurrency =
+      updateTransactionDto.currency !== undefined &&
+      currency !== current.currency;
+    if (resolvesCurrency) {
+      updateData.currencyContextVersion = 1;
+      updateData.currencyOrigin = 'explicit-resolution';
+    } else {
+      delete updateData.currency;
+    }
+    const checksAssignment =
+      typeof updateTransactionDto.budgetItemId === 'string' ||
+      (updateTransactionDto.budgetItemId === undefined &&
+        (updateTransactionDto.date !== undefined ||
+          resolvesCurrency ||
+          updateTransactionDto.type !== undefined));
     const date = new Date(updateTransactionDto.date ?? current.date);
     const links = await this.closedHistory.links(
       filter.userId,
@@ -597,7 +624,7 @@ export class TransactionsService {
           current.budgetItemId.toString(),
           updateTransactionDto.type ?? current.type,
           updateTransactionDto.date ?? current.date,
-          updateTransactionDto.currency ?? current.currency,
+          currency,
           session,
           retainedReportBudgets,
         );
@@ -609,7 +636,7 @@ export class TransactionsService {
         updateTransactionDto,
         updateTransactionDto.type ?? current.type,
         date,
-        updateTransactionDto.currency ?? current.currency,
+        currency,
         session,
         closedPeriod,
       );
