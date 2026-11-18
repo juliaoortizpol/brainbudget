@@ -70,6 +70,9 @@ descending and include `reportId`, `budgetId`, `transactionId`, `createdAt`,
 and `after`. A late arrival has null `before` and never enters the saved snapshot.
 Only the report owner can read the exception. Use the saved report drill-down
 for closing-time evidence and the exception endpoints for subsequent changes.
+The transaction endpoint returns 200 with an empty page and `total: 0` when the
+owned transaction has no exceptions. Foreign, missing and malformed transaction
+IDs all return 404.
 
 Manual and Gmail purchases that arrive inside finalized coverage are saved for
 review with no active assignment. If a manual create targeted a valid item in

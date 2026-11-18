@@ -693,14 +693,18 @@ export class TransactionsService {
   }
 
   async exceptions(id: string, userId: string, page: number, limit: number) {
+    if (!Types.ObjectId.isValid(id))
+      throw new NotFoundException('Transaction is unavailable');
+    const transactionId = new Types.ObjectId(id);
     if (
-      !Types.ObjectId.isValid(id) ||
-      !(await this.transactionModel.exists({ _id: id, userId }).exec())
+      !(await this.transactionModel
+        .exists({ _id: transactionId, userId: new Types.ObjectId(userId) })
+        .exec())
     )
       throw new NotFoundException('Transaction is unavailable');
     return this.closedHistory.listForTransaction(
       userId,
-      new Types.ObjectId(id),
+      transactionId,
       page,
       limit,
     );
