@@ -48,6 +48,14 @@ function correctedPurchaseCurrency(
   return requested ?? current;
 }
 
+function legacyHistoryRetained() {
+  return new ConflictException({
+    code: 'legacy_closed_transaction_retained',
+    message:
+      'Keep this transaction and its original assignment. Its closed budget has no final report available to audit changes to this purchase.',
+  });
+}
+
 @Injectable()
 export class TransactionsService {
   constructor(
@@ -57,6 +65,35 @@ export class TransactionsService {
     @InjectModel(BudgetItem.name) private items: Model<BudgetItemDocument>,
     private readonly closedHistory: ClosedPeriodHistoryService,
   ) {}
+
+  private async closedAssignmentBudget(
+    current: Pick<Transaction, 'budgetItemId'>,
+    owner: Types.ObjectId,
+    session: ClientSession,
+  ) {
+    const itemId = current.budgetItemId?.toString();
+    if (!itemId || !Types.ObjectId.isValid(itemId)) return;
+
+    // Retired items and parents can still be the only original association.
+    const item = await this.items
+      .findOne(
+        { _id: new Types.ObjectId(itemId), userId: owner },
+        { budgetId: 1 },
+        { session },
+      )
+      .lean()
+      .exec();
+    if (!item) return;
+    const budget = await this.budgets
+      .findOne(
+        { _id: item.budgetId, userId: owner, status: 'closed' },
+        { _id: 1 },
+        { session },
+      )
+      .lean()
+      .exec();
+    return budget?._id;
+  }
 
   private async validateAssignment(
     userId: string,
@@ -439,18 +476,16 @@ export class TransactionsService {
     updateTransactionDto: UpdateTransactionDto,
   ): Promise<Transaction> {
     return coverageWrite(this.transactionModel.db, userId, (session) =>
-      updateTransactionDto.rememberMerchant === true
-        ? this.rememberAssignment(id, userId, updateTransactionDto, session)
-        : this.updateExisting(id, userId, updateTransactionDto, session),
+      this.updateExisting(id, userId, updateTransactionDto, session),
     );
   }
 
   private async rememberAssignment(
-    id: string,
+    current: Transaction,
     userId: string,
     dto: UpdateTransactionDto,
     session: ClientSession,
-  ): Promise<Transaction> {
+  ): Promise<void> {
     if (
       typeof dto.budgetItemId !== 'string' ||
       !Types.ObjectId.isValid(dto.budgetItemId)
@@ -468,17 +503,6 @@ export class TransactionsService {
     };
     const error = matchingRulesError([rule]);
     if (error) throw new BadRequestException(error);
-    const current = await this.transactionModel
-      .findOne(
-        {
-          _id: new Types.ObjectId(id),
-          userId: new Types.ObjectId(userId),
-        },
-        null,
-        { session },
-      )
-      .exec();
-    if (!current) throw new NotFoundException('Transaction is unavailable');
     if (
       current.type !== 'expense' ||
       (dto.type ?? current.type) !== 'expense'
@@ -537,7 +561,6 @@ export class TransactionsService {
         throw new BadRequestException('Budget item changed; reload and retry');
       }
     }
-    return this.updateExisting(id, userId, dto, session);
   }
 
   private async updateExisting(
@@ -548,7 +571,6 @@ export class TransactionsService {
   ): Promise<Transaction> {
     const { rememberMerchant, merchantKeyword, ...transactionFields } =
       updateTransactionDto;
-    void rememberMerchant;
     void merchantKeyword;
     const updateData: Record<string, unknown> = { ...transactionFields };
     const unset: Record<string, 1> = {};
@@ -586,6 +608,25 @@ export class TransactionsService {
       session,
       filter._id,
     );
+    const closedBudget = await this.closedAssignmentBudget(
+      current,
+      filter.userId,
+      session,
+    );
+    if (
+      closedBudget &&
+      !links.some((report) => report.budgetId.equals(closedBudget))
+    ) {
+      throw legacyHistoryRetained();
+    }
+    if (rememberMerchant === true) {
+      await this.rememberAssignment(
+        current,
+        userId,
+        updateTransactionDto,
+        session,
+      );
+    }
     const retainedReportBudgets = links
       .filter((report) =>
         report.includedTransactionIds?.includes(filter._id.toString()),
@@ -723,6 +764,13 @@ export class TransactionsService {
         filter._id,
         session,
       );
+      const current = await this.transactionModel
+        .findOne(filter, { budgetItemId: 1 }, { session, lean: true })
+        .exec();
+      if (!current) throw new NotFoundException('Transaction is unavailable');
+      if (await this.closedAssignmentBudget(current, filter.userId, session)) {
+        throw legacyHistoryRetained();
+      }
       const deleted = await this.transactionModel
         .findOneAndDelete(filter, { session })
         .exec();

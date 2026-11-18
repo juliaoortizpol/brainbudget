@@ -92,9 +92,15 @@ never converts a currency.
 
 DELETE /transactions/:id returns HTTP 409
 `closed_period_transaction_retained` for originals referenced by final reports
-or exceptions. Use a live correction. Unrelated transactions keep ordinary
-DELETE behavior. Creates, import upserts, edits, assignments and deletes take
-the same owner lock as close. Late arrival and correction evidence commit in
+or exceptions. Use a live correction. An owned transaction linked to a closed
+budget through its original item also retains that protection when either
+reference is soft-deleted. If there is no V1 report or exception path for that
+purchase and budget, PATCH and DELETE return HTTP 409
+`legacy_closed_transaction_retained`. Keep the original purchase and assignment
+read-only, including its financial fields and source descriptions. No snapshot
+or audit entry is generated for a rejected edit. Unrelated transactions keep
+ordinary DELETE behavior. Creates, import upserts, edits, assignments and deletes
+take the same owner lock as close. Late arrival and correction evidence commit in
 the same Mongo transaction as the corresponding purchase write. An exception
 write failure aborts both operations. Imports report such failures as
 `SAVE_FAILED`; the original Gmail message can be retried.

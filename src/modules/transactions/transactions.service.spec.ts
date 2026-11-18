@@ -30,8 +30,16 @@ describe('manual transaction assignments', () => {
       { $set: Record<string, unknown>; $unset?: Record<string, number> },
     ]
   >;
-  let items: { findOne: jest.Mock<unknown, [Record<string, unknown>]> };
-  let budgets: { findOne: jest.Mock<unknown, [Record<string, unknown>]> };
+  type ReferenceQuery = [
+    Record<string, unknown>,
+    unknown?,
+    { session?: unknown }?,
+  ];
+  let items: {
+    findOne: jest.Mock<unknown, ReferenceQuery>;
+    updateOne: jest.Mock;
+  };
+  let budgets: { findOne: jest.Mock<unknown, ReferenceQuery> };
   let service: TransactionsService;
   let history: {
     links: jest.Mock;
@@ -45,6 +53,11 @@ describe('manual transaction assignments', () => {
   let current: Record<string, unknown>;
   let item: Record<string, unknown> | null;
   let budget: Record<string, unknown> | null;
+
+  function query(value: unknown) {
+    const result = { exec: () => Promise.resolve(value), lean: () => result };
+    return result;
+  }
 
   beforeEach(() => {
     saved = {};
@@ -96,14 +109,24 @@ describe('manual transaction assignments', () => {
     update = TransactionModel.findOneAndUpdate;
     update.mockReturnValue({ exec: () => Promise.resolve({ _id: id }) });
     items = {
-      findOne: jest.fn<unknown, [Record<string, unknown>]>().mockReturnValue({
-        exec: () => Promise.resolve(item),
-      }),
+      findOne: jest
+        .fn<unknown, ReferenceQuery>()
+        .mockImplementation((filter) =>
+          query(filter.isDeleted === false && item?.isDeleted ? null : item),
+        ),
+      updateOne: jest.fn(),
     };
     budgets = {
       findOne: jest
-        .fn<unknown, [Record<string, unknown>]>()
-        .mockReturnValue({ exec: () => Promise.resolve(budget) }),
+        .fn<unknown, ReferenceQuery>()
+        .mockImplementation((filter) =>
+          query(
+            (filter.status && budget?.status !== filter.status) ||
+              (filter.isDeleted === false && budget?.isDeleted)
+              ? null
+              : budget,
+          ),
+        ),
     };
     history = {
       links: jest.fn().mockResolvedValue([]),
@@ -232,6 +255,97 @@ describe('manual transaction assignments', () => {
     expect(history.protectDeletion.mock.invocationCallOrder[1]).toBeLessThan(
       remove.mock.invocationCallOrder[0],
     );
+  });
+
+  describe('BE5-R2 legacy closed history (TC5/TC10/TC11)', () => {
+    beforeEach(() => {
+      budget = { _id: item?.budgetId, status: 'closed' };
+    });
+
+    it.each([false, true])(
+      'blocks physical deletion for retained references (retired: %s)',
+      async (retired) => {
+        item = { ...item, isDeleted: retired };
+        budget = { ...budget, isDeleted: retired };
+        current.budgetItemId = itemId.toUpperCase();
+        await expect(service.remove(id, userId)).rejects.toMatchObject({
+          status: 409,
+          response: { code: 'legacy_closed_transaction_retained' },
+        });
+        const owner = new Types.ObjectId(userId);
+        expect(items.findOne).toHaveBeenCalledWith(
+          { _id: new Types.ObjectId(itemId), userId: owner },
+          { budgetId: 1 },
+          { session: connection.session },
+        );
+        expect(budgets.findOne).toHaveBeenCalledWith(
+          { _id: item.budgetId, userId: owner, status: 'closed' },
+          { _id: 1 },
+          { session: connection.session },
+        );
+        expect(connection.lock.mock.invocationCallOrder[0]).toBeLessThan(
+          items.findOne.mock.invocationCallOrder[0],
+        );
+        expect(remove).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      { budgetItemId: null },
+      { budgetItemId: itemId, rememberMerchant: true, merchantKeyword: 'Shop' },
+      { amount: 20 },
+      { type: 'income', date: new Date('2026-12-01') },
+      { rawDescription: 'Changed', normalizedMerchant: 'Changed' },
+      { accountId: new Types.ObjectId().toString(), notes: 'Changed' },
+      { currency: 'DOP' },
+    ])('preserves the only legacy evidence on PATCH %j', async (dto) => {
+      delete current.currency;
+      item = { ...item, isDeleted: true };
+      budget = { ...budget, isDeleted: true };
+      // Another period cannot audit the original association.
+      history.links.mockResolvedValue([{ budgetId: new Types.ObjectId() }]);
+      await expect(service.update(id, userId, dto)).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'legacy_closed_transaction_retained' },
+      });
+      expect(update).not.toHaveBeenCalled();
+      expect(items.updateOne).not.toHaveBeenCalled();
+      expect(history.record).not.toHaveBeenCalled();
+    });
+
+    it.each(['item', 'parent'] as const)(
+      'keeps ordinary deletion when the %s belongs to another owner',
+      async (foreign) => {
+        const model = foreign === 'item' ? items : budgets;
+        const foreignOwner = new Types.ObjectId();
+        model.findOne.mockImplementation((filter) =>
+          query(foreignOwner.equals(String(filter.userId)) ? budget : null),
+        );
+        await expect(service.remove(id, userId)).resolves.toBeUndefined();
+        expect(remove).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('allows V1 clearing with original assignment evidence in the same audit session', async () => {
+      const links = [
+        { budgetId: item?.budgetId, includedTransactionIds: [id] },
+      ];
+      history.links.mockResolvedValue(links);
+      const after = { ...current, budgetItemId: undefined };
+      update.mockReturnValue(query(after));
+      await expect(
+        service.update(id, userId, { budgetItemId: null }),
+      ).resolves.toBe(after);
+      expect(update.mock.calls[0][1].$unset).toHaveProperty('budgetItemId', 1);
+      expect(history.record).toHaveBeenCalledWith(
+        new Types.ObjectId(userId),
+        new Types.ObjectId(id),
+        links,
+        current,
+        after,
+        connection.session,
+      );
+    });
   });
 
   it('accepts the frontend payload and creates an unassigned needs-review transaction', async () => {
@@ -386,7 +500,7 @@ describe('manual transaction assignments', () => {
   });
 
   it('rejects unavailable or foreign references', async () => {
-    budgets.findOne.mockReturnValue({ exec: () => Promise.resolve(null) });
+    budgets.findOne.mockReturnValue(query(null));
     await expect(
       service.update(id, userId, { budgetItemId: itemId }),
     ).rejects.toThrow(BadRequestException);
@@ -459,16 +573,16 @@ describe('manual transaction assignments', () => {
               ),
               isDeleted: reason === 'deleted',
             };
-            model.findOne.mockImplementation((query) => ({
-              exec: () =>
-                Promise.resolve(
-                  reason !== 'missing' &&
-                    String(query.userId) === String(candidate.userId) &&
-                    query.isDeleted === candidate.isDeleted
-                    ? candidate
-                    : null,
-                ),
-            }));
+            model.findOne.mockImplementation((filter) =>
+              query(
+                reason !== 'missing' &&
+                  String(filter.userId) === String(candidate.userId) &&
+                  (filter.isDeleted === undefined ||
+                    filter.isDeleted === candidate.isDeleted)
+                  ? candidate
+                  : null,
+              ),
+            );
             const request =
               operation === 'create'
                 ? service.create(
@@ -488,10 +602,12 @@ describe('manual transaction assignments', () => {
           modelReset();
         }
         function modelReset() {
-          items.findOne.mockReturnValue({ exec: () => Promise.resolve(item) });
-          budgets.findOne.mockReturnValue({
-            exec: () => Promise.resolve(budget),
-          });
+          items.findOne.mockImplementation(() => query(item));
+          budgets.findOne.mockImplementation((filter) =>
+            query(
+              filter.status && budget?.status !== filter.status ? null : budget,
+            ),
+          );
         }
       },
     );
@@ -615,7 +731,7 @@ describe('manual transaction assignments', () => {
         type: 'income',
         date: new Date('2027-01-01'),
       });
-      expect(items.findOne).not.toHaveBeenCalled();
+      expect(items.findOne).toHaveBeenCalledTimes(1);
       expect(update.mock.calls[0][1].$unset).toMatchObject({
         budgetItemId: 1,
         matchingSource: 1,

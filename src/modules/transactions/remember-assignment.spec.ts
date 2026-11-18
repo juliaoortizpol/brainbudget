@@ -36,7 +36,10 @@ describe('remember assignment (controlled persistence)', () => {
     [unknown, { $set: Record<string, unknown> }, { session?: unknown }]
   >;
   let session: { withTransaction: jest.Mock; endSession: jest.Mock };
-  const query = <T>(value: T) => ({ exec: () => Promise.resolve(value) });
+  function query<T>(value: T) {
+    const result = { exec: () => Promise.resolve(value), lean: () => result };
+    return result;
+  }
 
   beforeEach(() => {
     rules = [
@@ -138,18 +141,22 @@ describe('remember assignment (controlled persistence)', () => {
       updateOne: itemWrite,
     };
     const budgets = {
-      findOne: jest.fn(() =>
-        query({
-          status: 'active',
-          currencyContext: {
-            version: 1,
-            currency: 'DOP',
-            origin: 'dop-v1-planning',
-          },
+      findOne: jest.fn((filter: { status?: string }) =>
+        query(
+          filter.status === 'closed'
+            ? null
+            : {
+                status: 'active',
+                currencyContext: {
+                  version: 1,
+                  currency: 'DOP',
+                  origin: 'dop-v1-planning',
+                },
 
-          startDate: new Date('2026-11-01'),
-          endDate: new Date('2026-11-30'),
-        }),
+                startDate: new Date('2026-11-01'),
+                endDate: new Date('2026-11-30'),
+              },
+        ),
       ),
     };
     service = new TransactionsService(
