@@ -191,7 +191,10 @@ describe('Replacement matching rule validation', () => {
         exec: () => Promise.resolve({ ...item, matchingRules: legacy }),
       });
     const service = new BudgetsService(
-      {} as never,
+      {
+        db: coverageTestConnection(),
+        findOne: () => ({ exec: () => Promise.resolve({ status: 'draft' }) }),
+      } as never,
       { findOneAndUpdate: update } as never,
       {} as never,
     );

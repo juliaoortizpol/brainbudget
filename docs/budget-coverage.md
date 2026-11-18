@@ -19,8 +19,8 @@ items. Drafts coexist. Active coverage has no final cutoff and continues after
 planned end. No automatic expiry/reopening, reset, rematch, deletion or movement
 occurs. Timezone is preserved after activation. Active-to-draft is rejected.
 
-PATCH /budgets/:id with `{"status":"closed"}` closes at the confirmed server
-instant. Optional actualCutoffDate can be any valid non-future instant strictly
+The [BE5 confirmed report routes](budget-close-reports.md) replace status-only
+closure via PATCH /budgets/:id. Optional actualCutoffDate can be any valid non-future instant strictly
 after start. Neither start nor cutoff is rounded or required to be midnight.
 closedAt records confirmation time independently of cutoff. Alternatively,
 closeThroughDate="2024-11-30" requests the next local midnight in the preserved
@@ -119,7 +119,7 @@ as a plan; new creates need timezone. Supplied FE4 eligibleCategories uses <=end
 and hides December choices. FE2 must adopt start<=purchase and (no actualCutoffDate
 or purchase<actualCutoffDate), active status, explicit timezone and separate optional
 planning/extended-period display. No frontend change is included. BE5 consumes final
-cutoff/closedAt for its later immutable reports; none is generated here. BE6 may
+cutoff/closedAt for its [immutable reports](budget-close-reports.md). BE6 may
 start an adjacent budget at cutoff; copying/rollover is outside this ticket.
 
 Local regressions use synthetic controlled persistence. coverage-routes.spec.ts

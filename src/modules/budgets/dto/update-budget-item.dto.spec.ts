@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { BudgetsService } from '../budgets.service';
 import { UpdateBudgetItemDto } from './update-budget-item.dto';
+import { coverageTestConnection } from '../../../../test/coverage-test-support';
 
 describe('Budget item rename', () => {
   const pipe = new ValidationPipe({
@@ -27,8 +28,12 @@ describe('Budget item rename', () => {
         .fn()
         .mockReturnValue({ exec: jest.fn().mockResolvedValue(saved) }),
     };
+    const connection = coverageTestConnection();
     const service = new BudgetsService(
-      {} as ConstructorParameters<typeof BudgetsService>[0],
+      {
+        db: connection,
+        findOne: () => ({ exec: () => Promise.resolve({ status: 'active' }) }),
+      } as unknown as ConstructorParameters<typeof BudgetsService>[0],
       itemModel as unknown as ConstructorParameters<typeof BudgetsService>[1],
       {} as ConstructorParameters<typeof BudgetsService>[2],
     );
@@ -44,7 +49,7 @@ describe('Budget item rename', () => {
     expect(itemModel.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: itemId, budgetId, userId, isDeleted: false },
       { $set: { name: 'Transportation' } },
-      { new: true, runValidators: true },
+      { new: true, runValidators: true, session: connection.session },
     );
   });
 

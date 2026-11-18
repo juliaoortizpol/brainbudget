@@ -1,5 +1,5 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { model, Types } from 'mongoose';
 import { BudgetsService } from './budgets.service';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
@@ -7,6 +7,8 @@ import { coverageTestConnection } from '../../../test/coverage-test-support';
 import { BudgetMatchingService } from './budget-matching.service';
 import { MerchantNormalizationService } from '../transactions/merchant-normalization.service';
 import { BudgetMatchingContext } from './budget-matching-context.service';
+import { BudgetReportsService } from '../reports/budget-reports.service';
+import { BudgetPeriodReportSchema } from '../reports/schemas/budget-period-report.schema';
 
 describe('coverage lifecycle (controlled persistence)', () => {
   const owner = new Types.ObjectId();
@@ -39,9 +41,15 @@ describe('coverage lifecycle (controlled persistence)', () => {
   let aggregate: jest.Mock;
   let connection: ReturnType<typeof coverageTestConnection>;
   let service: BudgetsService;
+  let reports: BudgetReportsService;
+  let saved: jest.Mock;
+  let priorReport: unknown;
+  const Report = model('ControlledCloseReport', BudgetPeriodReportSchema);
   const query = (value: unknown) => ({
     exec: () => Promise.resolve(value),
     limit: () => query(value),
+    lean: () => query(value),
+    sort: () => query(value),
   });
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(now);
@@ -77,6 +85,35 @@ describe('coverage lifecycle (controlled persistence)', () => {
         aggregate,
       } as never,
     );
+    saved = jest.fn();
+    priorReport = null;
+    class Reports {
+      static findOne = () => query(priorReport);
+      constructor(private readonly detail: unknown) {}
+      save = async (options: unknown) => {
+        saved(this.detail, options);
+        const report = new Report(this.detail);
+        await report.validate();
+        return report;
+      };
+    }
+    reports = new BudgetReportsService(
+      Budgets as never,
+      {
+        find: () =>
+          query([
+            {
+              _id: itemId,
+              isDeleted: false,
+              name: 'Test item',
+              type: 'expense',
+              plannedAmount: 30,
+            },
+          ]),
+      } as never,
+      { find: () => query([...currencyRows, ...outside]) } as never,
+      Reports as never,
+    );
     jest.spyOn(service, 'findOne').mockResolvedValue({} as never);
   });
   afterEach(() => jest.useRealTimers());
@@ -85,23 +122,41 @@ describe('coverage lifecycle (controlled persistence)', () => {
     'TC2/TC5 blocks closure for owned %s purchase evidence without writes',
     async (currency) => {
       currencyRows = [
-        { _id: new Types.ObjectId(), budgetItemId: itemId, currency },
+        {
+          _id: new Types.ObjectId(),
+          budgetItemId: itemId,
+          currency,
+          amount: 10,
+          date: base.startDate,
+          type: 'income',
+        },
       ];
+      const preview = await reports.preview(String(id), String(owner), {});
+      expect(preview.includedTransactionIds).toEqual([
+        String(currencyRows[0]._id),
+      ]);
+      expect(preview.blockers.map(({ code }) => code)).toEqual([
+        currency ? 'unsupported_currency' : 'unknown_currency',
+        'assignment_type_conflict',
+      ]);
       await expect(
-        service.update(String(id), String(owner), { status: 'closed' }),
-      ).rejects.toThrow('Currency issues block closing');
+        reports.confirm(String(id), String(owner), {
+          confirmed: true,
+          previewToken: preview.previewToken,
+          actualCutoffDate: now.toISOString(),
+        }),
+      ).rejects.toThrow('Resolve preview blockers');
       expect(written).not.toHaveBeenCalled();
+      expect(saved).not.toHaveBeenCalled();
     },
   );
 
   it('TC5 requires explicit planning resolution without rewriting transactions', async () => {
     delete current.currencyContext;
-    await expect(
-      service.update(String(id), String(owner), { status: 'closed' }),
-    ).rejects.toThrow('Resolve budget planning currency');
+    const preview = await reports.preview(String(id), String(owner), {});
+    expect(preview.blockers).toEqual([{ code: 'resolve_planning_currency' }]);
     await service.update(String(id), String(owner), {
       currency: 'DOP',
-      status: 'closed',
     });
     expect(written).toHaveBeenCalledWith(
       expect.anything(),
@@ -119,7 +174,22 @@ describe('coverage lifecycle (controlled persistence)', () => {
   });
 
   it('defaults close to the confirmed instant and preserves history without any transaction/item mutation', async () => {
-    await service.update(String(id), String(owner), { status: 'closed' });
+    const preview = await reports.preview(String(id), String(owner), {});
+    expect(preview.actualCutoffDate).toEqual(now);
+    expect(connection.lock).not.toHaveBeenCalled();
+    await reports.confirm(String(id), String(owner), {
+      confirmed: true,
+      previewToken: preview.previewToken,
+      actualCutoffDate: now.toISOString(),
+    });
+    expect(saved).toHaveBeenCalledWith(
+      expect.objectContaining({
+        budgetId: id,
+        userId: owner,
+        includedTransactionIds: [],
+      }),
+      { session: connection.session },
+    );
     expect(written).toHaveBeenCalledWith(
       expect.objectContaining({ userId: owner, isDeleted: false }),
       {
@@ -127,8 +197,6 @@ describe('coverage lifecycle (controlled persistence)', () => {
           status: 'closed',
           actualCutoffDate: now,
           closedAt: now,
-          timezone: base.timezone,
-          startDate: base.startDate,
         }) as unknown,
       },
       { session: connection.session, runValidators: true },
@@ -139,14 +207,117 @@ describe('coverage lifecycle (controlled persistence)', () => {
     );
   });
   it('closes a whole completed local day at next local midnight', async () => {
-    await service.update(String(id), String(owner), {
-      status: 'closed',
+    const preview = await reports.preview(String(id), String(owner), {
       closeThroughDate: '2024-12-31',
     });
-    expect(
-      (written.mock.calls[0][1] as { $set: { actualCutoffDate: Date } }).$set
-        .actualCutoffDate,
-    ).toEqual(new Date('2025-01-01T04:00:00Z'));
+    expect(preview.actualCutoffDate).toEqual(new Date('2025-01-01T04:00:00Z'));
+  });
+
+  it('TC1/TC3/TC4/TC6 reconciles an extended-period row and requires a fresh explicit confirmation', async () => {
+    const row = {
+      _id: new Types.ObjectId(),
+      date: new Date('2024-12-15T12:00:00Z'),
+      budgetItemId: itemId,
+      type: 'expense',
+      currency: 'DOP',
+      amount: -10.125,
+      name: 'Synthetic purchase',
+      currencyOrigin: 'mail-parser',
+    };
+    outside = [row];
+    const preview = await reports.preview(String(id), String(owner), {});
+    expect(preview.includedTransactionIds).toEqual([String(row._id)]);
+    expect(preview.items[0]).toMatchObject({
+      actualAmount: 10.13,
+      variance: 19.87,
+    });
+    expect(preview.totals).toMatchObject({
+      totalActualExpense: 10.13,
+      totalVariance: 19.87,
+    });
+    const payload = {
+      confirmed: true,
+      actualCutoffDate: now.toISOString(),
+      previewToken: preview.previewToken,
+    };
+    await expect(
+      reports.confirm(String(id), String(owner), {
+        ...payload,
+        confirmed: false,
+      }),
+    ).rejects.toThrow('Explicit close confirmation');
+    row.amount = -12;
+    await expect(
+      reports.confirm(String(id), String(owner), payload),
+    ).rejects.toThrow('Coverage or source evidence changed');
+    expect(saved).not.toHaveBeenCalled();
+    expect(written).not.toHaveBeenCalled();
+    const fresh = await reports.preview(String(id), String(owner), {});
+    const confirmation = { ...payload, previewToken: fresh.previewToken };
+    const result = await reports.confirm(
+      String(id),
+      String(owner),
+      confirmation,
+    );
+    const [detail] = saved.mock.calls[0] as [unknown];
+    const persisted = new Report(detail).toObject();
+    expect(persisted).toMatchObject({
+      items: [{ categoryName: 'Test item', type: 'expense', actualAmount: 12 }],
+      currencyContext: {
+        transactions: [
+          { transactionId: String(row._id), origin: 'mail-parser' },
+        ],
+      },
+      transactions: [{ transactionId: String(row._id), amount: -12 }],
+    });
+    priorReport = { ...result, _id: result.reportId };
+    await expect(
+      reports.confirm(String(id), String(owner), confirmation),
+    ).resolves.toEqual(result);
+    expect(saved).toHaveBeenCalledTimes(1);
+    expect(written).toHaveBeenCalledTimes(1);
+  });
+
+  it('TC3 rejects the old status path before attempting a write', async () => {
+    await expect(
+      service.update(String(id), String(owner), { status: 'closed' }),
+    ).rejects.toThrow('POST /budgets/:id/close');
+    expect(written).not.toHaveBeenCalled();
+  });
+
+  it('TC7 rejects closed budget and item changes before mutation', async () => {
+    current.status = 'closed';
+    const item = { name: 'Synthetic', type: 'expense', plannedAmount: 10 };
+    const actions = [
+      () => service.update(String(id), String(owner), { name: 'Changed' }),
+      () => service.softDelete(String(id), String(owner)),
+      () => service.addItem(String(id), String(owner), item),
+      () =>
+        service.updateBudgetItem(String(id), String(itemId), String(owner), {
+          name: 'Changed',
+        }),
+      () =>
+        service.softDeleteBudgetItem(String(id), String(itemId), String(owner)),
+    ];
+    for (const action of actions)
+      await expect(action()).rejects.toThrow(/closed/i);
+    expect(written).not.toHaveBeenCalled();
+  });
+  it.each([
+    { actualCutoffDate: '2025-01-05T00:00:00Z' },
+    { closeThroughDate: '2025-01-04' },
+    { closeThroughDate: '2024-02-30' },
+    {
+      closeThroughDate: '2024-12-01',
+      actualCutoffDate: '2024-12-02T04:00:00Z',
+    },
+    { actualCutoffDate: '2024-11-01T04:00:00Z' },
+  ])('rejects invalid preview cutoff %j without writes', async (dto) => {
+    await expect(
+      reports.preview(String(id), String(owner), dto),
+    ).rejects.toThrow(BadRequestException);
+    expect(written).not.toHaveBeenCalled();
+    expect(saved).not.toHaveBeenCalled();
   });
   it.each([
     { status: 'closed', actualCutoffDate: '2025-01-05T00:00:00Z' },
@@ -178,25 +349,17 @@ describe('coverage lifecycle (controlled persistence)', () => {
         amount: 999,
       },
     ];
-    try {
-      await service.update(String(id), String(owner), {
-        status: 'closed',
-        actualCutoffDate: '2024-12-15T12:00:00Z',
-      });
-      throw new Error('Expected cutoff rejection');
-    } catch (error) {
-      expect((error as BadRequestException).getResponse()).toEqual({
-        message: expect.stringContaining('Correct dates') as unknown,
-        affectedTransactions: [
-          {
-            id: String(transactionId),
-            date: outside[0].date,
-            budgetItemId: String(itemId),
-          },
-        ],
-        hasMore: false,
-      });
-    }
+    const preview = await reports.preview(String(id), String(owner), {
+      actualCutoffDate: '2024-12-15T12:00:00Z',
+    });
+    expect(preview.blockers).toEqual([
+      {
+        code: 'assignment_outside_cutoff',
+        transactionId: String(transactionId),
+        budgetItemId: String(itemId),
+      },
+    ]);
+    expect(preview.transactions).toEqual([]);
     expect(written).not.toHaveBeenCalled();
   });
   it('allows drafts alongside the active budget without replacing it', async () => {
@@ -256,7 +419,7 @@ describe('coverage lifecycle (controlled persistence)', () => {
     ).rejects.toThrow('cannot be changed or reopened');
     current = { ...base, coverageVersion: undefined };
     await expect(
-      service.update(String(id), String(owner), { status: 'closed' }),
+      service.update(String(id), String(owner), { status: 'active' }),
     ).rejects.toThrow('explicit migration');
     await expect(
       service.update(String(id), String(owner), {

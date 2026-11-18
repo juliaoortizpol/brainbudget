@@ -250,7 +250,7 @@ export class TransactionsService {
     const [data, total] = await Promise.all([
       this.transactionModel
         .find(query)
-        .sort({ date: -1 })
+        .sort({ date: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .exec(),
@@ -258,7 +258,7 @@ export class TransactionsService {
     ]);
 
     return {
-      data,
+      data: await this.withAssignmentLabels(userId, data),
       meta: {
         total,
         page,
@@ -279,7 +279,63 @@ export class TransactionsService {
     if (!transaction) {
       throw new NotFoundException(`Transaction #${id} not found`);
     }
-    return transaction;
+    return (await this.withAssignmentLabels(userId, [transaction]))[0];
+  }
+
+  private async withAssignmentLabels(
+    userId: string,
+    transactions: TransactionDocument[],
+  ) {
+    const references = new Set(
+      transactions.flatMap(({ budgetItemId }) =>
+        budgetItemId ? [budgetItemId.toString()] : [],
+      ),
+    );
+    if (!references.size) return transactions;
+    const owner = new Types.ObjectId(userId);
+    // Include retained soft-deleted rows to preserve historical labels.
+    const items = await this.items
+      .find(
+        {
+          userId: owner,
+          _id: {
+            $in: [...references].filter((value) =>
+              Types.ObjectId.isValid(value),
+            ),
+          },
+        },
+        { name: 1, budgetId: 1 },
+      )
+      .lean()
+      .exec();
+    const parents = await this.budgets
+      .find(
+        { userId: owner, _id: { $in: items.map((item) => item.budgetId) } },
+        { name: 1, status: 1 },
+      )
+      .lean()
+      .exec();
+    const byItem = new Map(items.map((item) => [item._id.toString(), item]));
+    const byBudget = new Map(
+      parents.map((budget) => [budget._id.toString(), budget]),
+    );
+    return transactions.map((transaction) => {
+      const item = byItem.get(
+        transaction.budgetItemId?.toString().toLowerCase() ?? '',
+      );
+      const budget = item && byBudget.get(item.budgetId.toString());
+      if (!item || !budget) return transaction;
+      return {
+        ...transaction.toObject(),
+        assignmentContext: {
+          budgetItemId: item._id,
+          budgetItemName: item.name,
+          budgetId: budget._id,
+          budgetName: budget.name,
+          budgetStatus: budget.status,
+        },
+      };
+    });
   }
 
   async update(

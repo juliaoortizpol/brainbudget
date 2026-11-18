@@ -89,6 +89,9 @@ validation, owner lock and Mongo transaction boundaries remain enforced.
 
 ## BE5 report contract
 
+See [BE5 close and report API](budget-close-reports.md) for the preview, confirmation,
+blocker response and saved-report read contracts that build on this foundation.
+
 BudgetPeriodReport now requires persisted `currencyContext` for new validation:
 version 1, a copied resolved `planning` context, `actualsCurrency:"DOP"`,
 `complete:true`, explicit empty `unresolvedTransactionIds`, and explicit
@@ -105,8 +108,7 @@ context. Legacy reports hydrate unchanged with unresolved context and fail new
 finalization validation. BE5 must construct evidence from the full owned final
 coverage under its transaction, prove completeness against source purchases,
 copy the context, and retain snapshot immutability. Schema validation alone
-cannot detect a caller omitting source purchases. No BE5 preview/close/report
-API, immutable-report service or BE6 preparation is implemented here.
+cannot detect a caller omitting source purchases.
 
 ## Verification boundary
 

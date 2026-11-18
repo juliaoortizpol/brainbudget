@@ -47,6 +47,7 @@ describe('Budget item keyword persistence', () => {
     }
     const service = new BudgetsService(
       {
+        db: coverageTestConnection(),
         findOne: () => ({ exec: () => Promise.resolve({ _id: budgetId }) }),
       } as unknown as ConstructorParameters<typeof BudgetsService>[0],
       ItemModel as unknown as ConstructorParameters<typeof BudgetsService>[1],
@@ -89,8 +90,10 @@ describe('Budget item keyword persistence', () => {
       toObject: () => ({ _id: budgetId }),
     };
     const aggregate = jest.fn().mockResolvedValue([]);
+    const connection = coverageTestConnection();
     const service = new BudgetsService(
       {
+        db: connection,
         findOne: () => ({ exec: () => Promise.resolve(budget) }),
       } as unknown as ConstructorParameters<typeof BudgetsService>[0],
       {
@@ -114,7 +117,7 @@ describe('Budget item keyword persistence', () => {
         isDeleted: false,
       }),
       { $set: { name: 'Commute', matchingRules: rules } },
-      { new: true, runValidators: true },
+      { new: true, runValidators: true, session: connection.session },
     );
     const reloaded = await service.findOne(budgetId, userId);
     expect(reloaded.items[0]).toEqual(

@@ -84,7 +84,7 @@ describe('transaction review query', () => {
     };
     expect(find).toHaveBeenCalledWith(expected);
     expect(countDocuments).toHaveBeenCalledWith(expected);
-    expect(chain.sort).toHaveBeenCalledWith({ date: -1 });
+    expect(chain.sort).toHaveBeenCalledWith({ date: -1, _id: -1 });
     expect(chain.skip).toHaveBeenCalledWith(2);
     expect(chain.limit).toHaveBeenCalledWith(2);
     expect(result).toEqual({
