@@ -11,6 +11,7 @@ and item actuals metadata. Dates serialize as ISO instants.
 | POST /budgets/:sourceId/drafts | Required `name`, `periodType`, `startDate`, `timezone`. Optional `currency: "DOP"`, `plannedEndDate` and compatible `endDate` alias. | 201 with the new draft and fresh item IDs. |
 | POST /budgets | Same planning fields plus `status: "draft"`. Omit `items` or pass an empty array for an empty draft. | 201 with the editable draft. |
 | POST /budgets/:draftId/activate | Send `{}` for the default, or `{"startDate":"2025-02-03T04:00:00Z"}` to choose an explicit coverage start. | 200 with the active budget, effective start and existing item IDs. |
+| PATCH /budgets/:draftId | Send `{"status":"active"}` with optional `startDate`. | Same activation response as POST /budgets/:draftId/activate. |
 
 `periodType` accepts monthly, weekly or custom. Supply a valid budget timezone.
 For `startDate`, create, copy, PATCH (including status changes) and dedicated
@@ -49,9 +50,15 @@ period starts inclusively and stays open until confirmed closure. Prior planned
 end and closure timestamp are independent of the chosen start. The draft's
 timezone and DOP context carry into the active budget.
 
-Existing status-to-active PATCH for a draft uses the same checks and default.
+Status-to-active PATCH uses the same checks and default as dedicated activation.
+It accepts only `status: "active"` and optional `startDate`. A request that
+also includes planning fields or `items` returns 400 before any budget or item
+changes. Save configuration with a separate ordinary PATCH without
+`status: "active"` or with the existing item routes, then send activation.
+Ordinary PATCH requests remain available for draft and active budget edits.
 Existing direct active POST retains its required explicit start and runs the
-same prior-closure and coverage checks. Active and closed budgets cannot be
+same prior-closure and coverage checks. It creates a new record, so reconcile
+the owned budget list if its response is lost. Active and closed budgets cannot be
 soft-deleted to bypass closure or coverage guards. Legacy unresolved history
 requires an authorized explicit resolution before retrying. A resolved interval
 alone does not establish the latest prior budget's final report.
@@ -67,9 +74,9 @@ alone does not establish the latest prior budget's final report.
   budget list and check current state before retrying. A copy request creates a
   new draft per successful submission, so reconcile before resending it.
 
-Activation retries on the dedicated endpoint are safe while the same budget
-remains active. Omit the start or pass its committed start to return the active
-record without reapplying a write to the budget or items. Closed targets stay
+Activation retries over either existing-budget route are safe while the same
+budget remains active. Omit the start or pass an equivalent instant to return
+the active record without reapplying a write to the budget or items. Closed targets stay
 immutable. Each transaction attempt derives an omitted start from the confirmed
 cutoff visible to that attempt. If a competing request activated the same draft
 between attempts, an omitted start returns the committed active budget.
@@ -99,7 +106,9 @@ saved financial data, and use existing exception routes for later changes.
 
 The Developer regressions use controlled persistence and Nest route injection.
 TC1–TC5 and TC9 cover route validation, copy projection and rule validation,
-fresh IDs, the empty alternative, guards, cutoff default and same-draft retry.
+fresh IDs, the empty alternative, guards, cutoff default and same-draft retry
+through both activation routes. TC5 and TC9 also cover rejected mixed PATCH
+requests, competing same-draft starts and successful separate configuration edits.
 Real authenticated HTTP/Mongo verification must use only
 `brainbudget_qa_synthetic` and the approved TC1–TC10 matrix. It includes
 post-native-write faults, concurrent activation, retained history and

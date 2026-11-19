@@ -139,9 +139,20 @@ describe('BE6 next budget with controlled persistence', () => {
       }
     }
     const transactions = { find: jest.fn(() => query([])) };
+    const saveItem = jest.fn((item: InstanceType<typeof Item>) =>
+      item.validate(),
+    );
+    class Items {
+      static find = findItems;
+      static insertMany = insert;
+
+      constructor(data: object) {
+        return { save: () => saveItem(new Item(data)) };
+      }
+    }
     const service = new BudgetsService(
       Budgets as never,
-      { find: findItems, insertMany: insert } as never,
+      Items as never,
       transactions as never,
     );
     jest.spyOn(service, 'findOne').mockResolvedValue({} as never);
@@ -152,6 +163,7 @@ describe('BE6 next budget with controlled persistence', () => {
       report,
       save,
       insert,
+      saveItem,
       findOne,
       findItems,
       update,
@@ -275,31 +287,102 @@ describe('BE6 next budget with controlled persistence', () => {
     expect(f.update).toHaveBeenCalledTimes(1);
   });
 
-  it('TC9 replays an omitted start after a competing explicit same-draft activation', async () => {
+  it('TC5/TC9 rejects repeated mixed status PATCH and preserves ordinary edits', async () => {
     const f = fixture();
-    const winningStart = new Date('2025-02-04T04:00:00Z');
-    const aborted = new Error('controlled transaction abort');
-    f.update.mockImplementationOnce(() => ({
-      ...query({ matchedCount: 0 }),
-      exec: () => Promise.reject(aborted),
-    }));
-    f.connection.session.withTransaction.mockImplementationOnce(
-      async (work) => {
-        await expect(work()).rejects.toBe(aborted);
-        await f.service.activate(String(draftId), String(owner), {
-          startDate: winningStart.toISOString(),
-        });
-        return work();
-      },
-    );
+    const id = String(draftId);
+    const user = String(owner);
+    const items = [
+      { name: 'Synthetic groceries', type: 'expense', plannedAmount: 100 },
+    ];
+    const mixed = { status: 'active', items };
 
-    const dto = Object.freeze({});
-    await f.service.activate(String(draftId), String(owner), dto);
-    expect(f.current.startDate).toEqual(winningStart);
-    expect(f.update).toHaveBeenCalledTimes(2);
-    await f.service.activate(String(draftId), String(owner), dto);
-    expect(f.update).toHaveBeenCalledTimes(2);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await expect(f.service.update(id, user, mixed)).rejects.toThrow(
+        'Save budget and item changes in a separate PATCH',
+      );
+    }
+    expect(f.current.status).toBe('draft');
+    expect(f.update).not.toHaveBeenCalled();
+    expect(f.saveItem).not.toHaveBeenCalled();
+
+    await f.service.update(id, user, {
+      name: 'Edited synthetic draft',
+      items,
+    });
+    expect(f.current.name).toBe('Edited synthetic draft');
+    expect(f.saveItem).toHaveBeenCalledTimes(1);
+    await f.service.update(id, user, { status: 'active' });
+    await expect(f.service.update(id, user, mixed)).rejects.toMatchObject({
+      status: 400,
+    });
+    await f.service.update(id, user, {
+      name: 'Edited synthetic active budget',
+    });
+    expect(f.current.name).toBe('Edited synthetic active budget');
+    expect(f.saveItem).toHaveBeenCalledTimes(1);
+    expect(f.update).toHaveBeenCalledTimes(3);
   });
+
+  it('TC5/TC9 keeps the first same-draft start across both activation routes', async () => {
+    const f = fixture();
+    const id = String(draftId);
+    const user = String(owner);
+    await f.service.update(id, user, {
+      status: 'active',
+      startDate: cutoff.toISOString(),
+    });
+    await f.service.update(id, user, {
+      status: 'active',
+      startDate: '2025-02-03T00:00:00-04:00',
+    });
+    await f.service.activate(id, user, {});
+    await expect(
+      f.service.update(id, user, {
+        status: 'active',
+        startDate: '2025-02-04T04:00:00Z',
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(f.current.startDate).toEqual(cutoff);
+    expect(f.update).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['POST', 'PATCH'])(
+    'TC9 replays an omitted %s start after a competing explicit same-draft activation',
+    async (method) => {
+      const f = fixture();
+      const winningStart = new Date('2025-02-04T04:00:00Z');
+      const aborted = new Error('controlled transaction abort');
+      f.update.mockImplementationOnce(() => ({
+        ...query({ matchedCount: 0 }),
+        exec: () => Promise.reject(aborted),
+      }));
+      f.connection.session.withTransaction.mockImplementationOnce(
+        async (work) => {
+          await expect(work()).rejects.toBe(aborted);
+          await f.service.activate(String(draftId), String(owner), {
+            startDate: winningStart.toISOString(),
+          });
+          return work();
+        },
+      );
+
+      const retry = () =>
+        method === 'PATCH'
+          ? f.service.update(String(draftId), String(owner), {
+              status: 'active',
+            })
+          : f.service.activate(
+              String(draftId),
+              String(owner),
+              Object.freeze({}),
+            );
+      await retry();
+      expect(f.current.startDate).toEqual(winningStart);
+      expect(f.update).toHaveBeenCalledTimes(2);
+      await retry();
+      expect(f.update).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it.each([undefined, '2025-02-04T01:00:00-04:00'])(
     'TC5/TC9 rechecks the confirmed cutoff on replay with requested start %s',

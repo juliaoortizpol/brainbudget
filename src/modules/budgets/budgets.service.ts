@@ -252,7 +252,7 @@ export class BudgetsService {
     userId: string,
     updateBudgetDto: UpdateBudgetDto,
   ): Promise<BudgetWithItems> {
-    return this.updateInCoverage(id, userId, updateBudgetDto, false);
+    return this.updateInCoverage(id, userId, updateBudgetDto);
   }
 
   async activate(
@@ -260,12 +260,7 @@ export class BudgetsService {
     userId: string,
     dto: ActivateBudgetDto,
   ): Promise<BudgetWithItems> {
-    return this.updateInCoverage(
-      id,
-      userId,
-      { ...dto, status: 'active' },
-      true,
-    );
+    return this.updateInCoverage(id, userId, { ...dto, status: 'active' });
   }
 
   private requireBudgetId(id: string): void {
@@ -277,13 +272,13 @@ export class BudgetsService {
     id: string,
     userId: string,
     dto: UpdateBudgetDto,
-    activationOnly: boolean,
   ): Promise<BudgetWithItems> {
     this.requireBudgetId(id);
     const updateBudgetDto = Object.fromEntries(
       Object.entries(dto).filter(([, value]) => value !== undefined),
     ) as UpdateBudgetDto;
     const { items, ...budgetData } = updateBudgetDto;
+    const activationRequested = budgetData.status === 'active';
     this.validateItems(items);
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(id);
@@ -297,6 +292,15 @@ export class BudgetsService {
         )
         .exec();
       if (!current) throw new NotFoundException(`Budget #${id} not found`);
+      if (
+        activationRequested &&
+        Object.keys(updateBudgetDto).some(
+          (key) => key !== 'status' && key !== 'startDate',
+        )
+      )
+        throw new BadRequestException(
+          'Activation accepts only status and optional startDate. Save budget and item changes in a separate PATCH without status: active, then activate',
+        );
       if (budgetData.status === 'closed')
         throw new BadRequestException(
           'Use POST /budgets/:id/close-preview and POST /budgets/:id/close to confirm closure',
@@ -354,14 +358,14 @@ export class BudgetsService {
         );
       }
       if (
-        (current.status !== 'draft' || budgetData.status === 'active') &&
+        current.status !== 'draft' &&
         budgetData.timezone !== undefined &&
         budgetData.timezone !== current.timezone
       )
         throw new BadRequestException('Timezone is preserved after activation');
       if (current.status === 'active' && budgetData.status === 'draft')
         throw new BadRequestException('Active budgets require manual closure');
-      if (activationOnly && current.status === 'active') {
+      if (activationRequested && current.status === 'active') {
         if (
           budgetData.startDate !== undefined &&
           new Date(budgetData.startDate).getTime() !==
@@ -372,8 +376,7 @@ export class BudgetsService {
           );
         return true;
       }
-      const activating =
-        current.status === 'draft' && budgetData.status === 'active';
+      const activating = current.status === 'draft' && activationRequested;
       let priorCutoff: Date | undefined;
       if (activating) {
         if (current.actualCutoffDate != null || current.closedAt != null)
