@@ -1,3 +1,4 @@
+import { ClosedPeriodHistoryService } from '../reports/closed-period-history.service';
 import { ConflictException, Injectable } from '@nestjs/common';
 import { BudgetMatchingService } from '@/modules/budgets/budget-matching.service';
 import { BudgetMatchingContextService } from '@/modules/budgets/budget-matching-context.service';
@@ -24,6 +25,7 @@ export class TransactionMailPersistenceService {
     private readonly merchantNormalization: MerchantNormalizationService,
     private readonly budgetMatching: BudgetMatchingService,
     private readonly matchingContext: BudgetMatchingContextService,
+    private readonly closedHistory: ClosedPeriodHistoryService,
   ) {}
 
   async save(
@@ -46,52 +48,66 @@ export class TransactionMailPersistenceService {
           this.transactionModel.db,
           userId,
           async (session) => {
-            const context = await this.matchingContext.load(userId, session);
+            const owner = new Types.ObjectId(userId);
             const transaction = envelope.transaction;
-            const matching = this.budgetMatching.matchTransaction(
-              {
-                userId: new Types.ObjectId(userId),
-                name: transaction.description,
-                rawDescription: transaction.description,
-                normalizedMerchant: this.merchantNormalization.normalize(
-                  transaction.description,
-                ),
-                date: transaction.transactionDate,
-                type: transaction.type,
-                currency: transaction.currency,
-              } as Transaction,
-              context,
+            const date = transaction.transactionDate;
+            const links = await this.closedHistory.links(
+              owner,
+              [date],
+              session,
             );
-            return this.transactionModel
+            const covered = this.closedHistory.isCovered(links, date);
+            const normalizedMerchant = this.merchantNormalization.normalize(
+              transaction.description,
+            );
+            const matching = covered
+              ? {
+                  matchingStatus: 'needs_review' as const,
+                  normalizedMerchant,
+                  budgetItemId: undefined,
+                  matchingSource: undefined,
+                }
+              : this.budgetMatching.matchTransaction(
+                  {
+                    userId: owner,
+                    name: transaction.description,
+                    rawDescription: transaction.description,
+                    normalizedMerchant,
+                    date: transaction.transactionDate,
+                    type: transaction.type,
+                    currency: transaction.currency,
+                  } as Transaction,
+                  await this.matchingContext.load(userId, session),
+                );
+            const inserted: Transaction = {
+              userId: owner,
+              accountId: new Types.ObjectId(envelope.accountId),
+              name: transaction.description,
+              budgetItemId: matching.budgetItemId,
+              matchingStatus: matching.matchingStatus,
+              matchingSource: matching.matchingSource,
+              rawDescription: transaction.description,
+              normalizedMerchant: matching.normalizedMerchant,
+              amount: transaction.amount,
+              type: transaction.type,
+              currency: transaction.currency,
+              currencyContextVersion: 1,
+              currencyOrigin: 'mail-parser',
+              relationCode: transaction.reference,
+              date: transaction.transactionDate,
+              source: TransactionSource.GMAIL,
+              sourceMessageId: envelope.messageId,
+              parserKey: envelope.parserKey,
+              parserVersion: envelope.parserVersion,
+            };
+            const write = await this.transactionModel
               .updateOne(
                 {
-                  userId: new Types.ObjectId(userId),
+                  userId: owner,
                   source: TransactionSource.GMAIL,
                   sourceMessageId: envelope.messageId,
                 },
-                {
-                  $setOnInsert: {
-                    userId: new Types.ObjectId(userId),
-                    accountId: new Types.ObjectId(envelope.accountId),
-                    name: transaction.description,
-                    budgetItemId: matching.budgetItemId,
-                    matchingStatus: matching.matchingStatus,
-                    matchingSource: matching.matchingSource,
-                    rawDescription: transaction.description,
-                    normalizedMerchant: matching.normalizedMerchant,
-                    amount: transaction.amount,
-                    type: transaction.type,
-                    currency: transaction.currency,
-                    currencyContextVersion: 1,
-                    currencyOrigin: 'mail-parser',
-                    relationCode: transaction.reference,
-                    date: transaction.transactionDate,
-                    source: TransactionSource.GMAIL,
-                    sourceMessageId: envelope.messageId,
-                    parserKey: envelope.parserKey,
-                    parserVersion: envelope.parserVersion,
-                  },
-                },
+                { $setOnInsert: inserted },
                 { upsert: true, runValidators: true, session },
               )
               .exec()
@@ -100,6 +116,19 @@ export class TransactionMailPersistenceService {
                   throw new ConflictException('Duplicate imported message');
                 throw error;
               });
+            if (write.upsertedCount === 1 && links.length) {
+              if (!write.upsertedId)
+                throw new Error('Missing imported transaction identity');
+              await this.closedHistory.record(
+                owner,
+                write.upsertedId,
+                links,
+                null,
+                inserted,
+                session,
+              );
+            }
+            return write;
           },
         );
 

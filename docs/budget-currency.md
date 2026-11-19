@@ -46,7 +46,9 @@ learning require supported planning context and exact DOP purchase currency,
 in addition to existing owner/live-item/active-parent/type/date checks. Rejected
 writes do not change assignments or rules. Automatic matching uses the same
 policy and leaves unsupported/unknown imported purchases unassigned for review.
-Existing manual choices are preserved even when their currency needs review;
+A BE5 correction can retain a closed historical assignment with a separate
+audit event. The saved snapshot keeps the original currency evidence. Existing
+manual choices are preserved even when their currency needs review;
 aggregation still excludes those purchases. Import remains insert-only per
 owner/source/message ID: repeat sync never overwrites a manual correction.
 
@@ -70,13 +72,19 @@ acknowledgement once; an already contextualized closed budget rejects currency
 edits with `Closed budget currency context cannot be changed`. This changes no
 coverage boundaries and does not resolve missing legacy lifecycle decisions.
 
-PATCH /transactions/:id with the verified actual purchase `currency` records
-version 1 and `explicit-resolution`. This is an explicit owner correction,
-never an account-derived historical inference. An unknown purchase may be
-corrected to DOP and assigned in one atomic request. If the verified purchase is
-USD, retain USD, optionally clear an old assignment in that same PATCH, and keep
-it for review. Do not relabel it as DOP or invent a converted amount. An ordinary
-account edit never changes purchase or report currency evidence.
+PATCH /transactions/:id can fill a missing, null or blank currency with the
+verified purchase `currency`, recording version 1 and `explicit-resolution`. A
+purchase with missing or blank currency may be resolved to DOP and assigned in
+one atomic request. If verification identifies
+USD, save USD and keep the purchase for review. The request may clear an old
+assignment at the same time. Once a purchase has any nonblank recorded value,
+PATCH with a different currency returns HTTP 409 `purchase_currency_locked` and rejects the
+entire request, including assignment and merchant learning. Nonblank values
+classified as `unknown_currency` for eligibility retain their original case,
+whitespace and provenance. Sending the same DTO-valid
+currency preserves its stored origin and version, including absent legacy
+metadata. Any assignment included with that request still runs ordinary checks.
+An ordinary account edit never changes purchase or report currency evidence.
 
 Closing checks all owned transactions in the proposed final coverage, including
 income and unassigned rows. Missing planning context returns
@@ -88,6 +96,9 @@ period until supported explicit resolution exists. Existing coverage-stranding
 validation, owner lock and Mongo transaction boundaries remain enforced.
 
 ## BE5 report contract
+
+See [BE5 close and report API](budget-close-reports.md) for the preview, confirmation,
+blocker response and saved-report read contracts that build on this foundation.
 
 BudgetPeriodReport now requires persisted `currencyContext` for new validation:
 version 1, a copied resolved `planning` context, `actualsCurrency:"DOP"`,
@@ -105,8 +116,7 @@ context. Legacy reports hydrate unchanged with unresolved context and fail new
 finalization validation. BE5 must construct evidence from the full owned final
 coverage under its transaction, prove completeness against source purchases,
 copy the context, and retain snapshot immutability. Schema validation alone
-cannot detect a caller omitting source purchases. No BE5 preview/close/report
-API, immutable-report service or BE6 preparation is implemented here.
+cannot detect a caller omitting source purchases.
 
 ## Verification boundary
 

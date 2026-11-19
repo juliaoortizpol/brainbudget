@@ -8,27 +8,53 @@ import { request } from '../../../test/inject-http-routes';
 import { Server } from 'node:http';
 import { Types } from 'mongoose';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { BudgetReportsController } from '../reports/budget-reports.controller';
+import { BudgetReportsService } from '../reports/budget-reports.service';
+import { ClosedPeriodHistoryService } from '../reports/closed-period-history.service';
 import { BudgetsController } from './budgets.controller';
 import { BudgetsService } from './budgets.service';
 import { TransactionsController } from '../transactions/transactions.controller';
 import { TransactionsService } from '../transactions/transactions.service';
 import { AuthenticatedRequest } from '../../common/types/authenticated-request';
+import { coverageTestConnection } from '../../../test/coverage-test-support';
 
 describe('coverage route injection (real pipe, controlled transport/auth/services)', () => {
   let app: INestApplication;
   const owner = String(new Types.ObjectId());
   const id = String(new Types.ObjectId());
   const update = jest.fn().mockResolvedValue({ status: 'closed' });
-  const updateTransaction = jest.fn().mockResolvedValue({});
+  const updateTransaction = jest
+    .fn<Promise<unknown>, Parameters<TransactionsService['update']>>()
+    .mockResolvedValue({});
   const findAll = jest.fn().mockResolvedValue({ data: [], meta: { total: 0 } });
+  const confirm = jest.fn().mockResolvedValue({ reportId: id });
+  const reportExceptions = jest
+    .fn()
+    .mockResolvedValue({ data: [], page: 1, limit: 20, total: 0 });
+  const transactionExceptions = jest
+    .fn()
+    .mockResolvedValue({ data: [], page: 1, limit: 20, total: 0 });
   beforeAll(async () => {
     const module = await Test.createTestingModule({
-      controllers: [BudgetsController, TransactionsController],
+      controllers: [
+        BudgetsController,
+        TransactionsController,
+        BudgetReportsController,
+      ],
       providers: [
+        { provide: BudgetReportsService, useValue: { confirm } },
+        {
+          provide: ClosedPeriodHistoryService,
+          useValue: { listForReport: reportExceptions },
+        },
         { provide: BudgetsService, useValue: { update } },
         {
           provide: TransactionsService,
-          useValue: { findAll, update: updateTransaction },
+          useValue: {
+            findAll,
+            update: updateTransaction,
+            exceptions: transactionExceptions,
+          },
         },
       ],
     })
@@ -60,6 +86,52 @@ describe('coverage route injection (real pipe, controlled transport/auth/service
     updateTransaction.mockClear();
     findAll.mockClear();
   });
+  it('TC3 routes only explicit confirmation with a valid preview token and ISO instant', async () => {
+    const url = '/budgets/' + id + '/close';
+    const payload = {
+      actualCutoffDate: '2024-12-02T13:34:56-04:00',
+      previewToken: 'a'.repeat(64),
+    };
+    await request(app.getHttpServer() as Server)
+      .post(url)
+      .send(payload)
+      .expect(400);
+    await request(app.getHttpServer() as Server)
+      .post(url)
+      .send({ ...payload, confirmed: false })
+      .expect(400);
+    expect(confirm).not.toHaveBeenCalled();
+    await request(app.getHttpServer() as Server)
+      .post(url)
+      .send({ ...payload, confirmed: true })
+      .expect(200);
+    expect(confirm).toHaveBeenCalledWith(id, owner, {
+      ...payload,
+      confirmed: true,
+    });
+  });
+
+  it('TC8/TC9 scopes exception routes to the authenticated owner and validates pagination', async () => {
+    const report = '/budget-reports/' + id + '/exceptions';
+    const transaction = '/transactions/' + id + '/closed-period-exceptions';
+    await request(app.getHttpServer() as Server)
+      .get(report)
+      .expect(200);
+    await request(app.getHttpServer() as Server)
+      .get(transaction + '?page=2&limit=5')
+      .expect(200);
+    await request(app.getHttpServer() as Server)
+      .get(report + '?limit=101')
+      .expect(400);
+    await request(app.getHttpServer() as Server)
+      .get(transaction + '?page=0')
+      .expect(400);
+    expect(reportExceptions).toHaveBeenCalledTimes(1);
+    expect(reportExceptions).toHaveBeenCalledWith(owner, id, 1, 20);
+    expect(transactionExceptions).toHaveBeenCalledTimes(1);
+    expect(transactionExceptions).toHaveBeenCalledWith(id, owner, 2, 5);
+  });
+
   it('routes instant closure and budget coverage review with authenticated ownership', async () => {
     await request(app.getHttpServer() as Server)
       .patch(`/budgets/${id}`)
@@ -141,4 +213,87 @@ describe('coverage route injection (real pipe, controlled transport/auth/service
       }),
     );
   });
+
+  it.each([
+    { currency: 'USD', origin: 'mail-parser', status: 409 },
+    { currency: 'DOP', origin: 'mail-parser', status: 200 },
+    { currency: undefined, origin: undefined, status: 200 },
+  ])(
+    'TC2/TC6 PATCH submits DOP with an item for a $currency purchase',
+    async ({ currency, origin, status }) => {
+      const itemId = new Types.ObjectId();
+      const budgetId = new Types.ObjectId();
+      const row = {
+        _id: new Types.ObjectId(id),
+        userId: new Types.ObjectId(owner),
+        type: 'expense',
+        date: new Date('2024-12-02T00:00:00Z'),
+        amount: 20,
+        currency,
+        currencyOrigin: origin,
+        currencyContextVersion: origin ? 1 : undefined,
+      };
+      const query = (value: unknown) => ({
+        exec: () => Promise.resolve(value),
+      });
+      const write = jest.fn((_filter: unknown, update: { $set: object }) =>
+        query({ ...row, ...update.$set }),
+      );
+      const service = new TransactionsService(
+        {
+          db: coverageTestConnection(),
+          findOne: () => query(row),
+          findOneAndUpdate: write,
+          hydrate: (updated: unknown) => updated,
+        } as never,
+        {
+          findOne: () =>
+            query({
+              status: 'active',
+              startDate: new Date('2024-11-01T00:00:00Z'),
+              coverageVersion: 1,
+              timezone: 'America/Santo_Domingo',
+              currencyContext: {
+                version: 1,
+                currency: 'DOP',
+                origin: 'dop-v1-planning',
+              },
+            }),
+        } as never,
+        {
+          findOne: () => query({ _id: itemId, budgetId, type: 'expense' }),
+        } as never,
+        {
+          links: () => Promise.resolve([]),
+          isCovered: () => false,
+          record: () => Promise.resolve(),
+        } as never,
+      );
+      updateTransaction.mockImplementationOnce((...args) =>
+        service.update(...args),
+      );
+      await request(app.getHttpServer() as Server)
+        .patch(`/transactions/${id}`)
+        .send({ currency: 'DOP', budgetItemId: String(itemId) })
+        .expect(status);
+      if (status === 409) {
+        expect(write).not.toHaveBeenCalled();
+      } else {
+        expect(write).toHaveBeenCalledTimes(1);
+        const update = write.mock.calls[0][1].$set;
+        expect(update).toMatchObject({ budgetItemId: itemId });
+        if (origin) {
+          expect(update).not.toHaveProperty('currencyOrigin');
+          expect(update).not.toHaveProperty('currencyContextVersion');
+          expect(update).not.toHaveProperty('currency');
+        } else {
+          expect(update).toMatchObject({
+            currency: 'DOP',
+            currencyOrigin: 'explicit-resolution',
+            currencyContextVersion: 1,
+          });
+        }
+      }
+    },
+  );
 });

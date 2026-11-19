@@ -52,5 +52,6 @@ export function request(server: Server) {
   return {
     get: (url: string) => route('GET', url),
     patch: (url: string) => route('PATCH', url),
+    post: (url: string) => route('POST', url),
   };
 }

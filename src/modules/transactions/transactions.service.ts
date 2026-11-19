@@ -1,9 +1,9 @@
+import { ClosedPeriodHistoryService } from '../reports/closed-period-history.service';
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
-  HttpException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { QueryFilter, Model, Types, ClientSession } from 'mongoose';
@@ -30,6 +30,31 @@ import {
   BudgetItemDocument,
 } from '../budgets/schemas/budget-item.schema';
 
+function correctedPurchaseCurrency(
+  current: string | null | undefined,
+  requested: string | undefined,
+): string | null | undefined {
+  // Eligibility can be unknown even when the original denomination is recorded.
+  const missing =
+    current == null || (typeof current === 'string' && current.trim() === '');
+  if (requested !== undefined && requested !== current && !missing) {
+    throw new ConflictException({
+      code: 'purchase_currency_locked',
+      message:
+        'Keep the recorded purchase currency. Provide a verified currency only when the original value is absent or blank.',
+    });
+  }
+  return requested ?? current;
+}
+
+function legacyHistoryRetained() {
+  return new ConflictException({
+    code: 'legacy_closed_transaction_retained',
+    message:
+      'Keep this transaction and its original assignment. Its closed budget has no final report available to audit changes to this purchase.',
+  });
+}
+
 @Injectable()
 export class TransactionsService {
   constructor(
@@ -37,7 +62,37 @@ export class TransactionsService {
     private transactionModel: Model<TransactionDocument>,
     @InjectModel(Budget.name) private budgets: Model<BudgetDocument>,
     @InjectModel(BudgetItem.name) private items: Model<BudgetItemDocument>,
+    private readonly closedHistory: ClosedPeriodHistoryService,
   ) {}
+
+  private async closedAssignmentBudget(
+    current: Pick<Transaction, 'budgetItemId'>,
+    owner: Types.ObjectId,
+    session: ClientSession,
+  ) {
+    const itemId = current.budgetItemId?.toString();
+    if (!itemId || !Types.ObjectId.isValid(itemId)) return;
+
+    // Retired items and parents can still be the only original association.
+    const item = await this.items
+      .findOne(
+        { _id: new Types.ObjectId(itemId), userId: owner },
+        { budgetId: 1 },
+        { session },
+      )
+      .lean()
+      .exec();
+    if (!item) return;
+    const budget = await this.budgets
+      .findOne(
+        { _id: item.budgetId, userId: owner, status: 'closed' },
+        { _id: 1 },
+        { session },
+      )
+      .lean()
+      .exec();
+    return budget?._id;
+  }
 
   private async validateAssignment(
     userId: string,
@@ -45,8 +100,13 @@ export class TransactionsService {
     type: string,
     date: Date,
     currency: unknown,
-    session?: ClientSession,
+    session: ClientSession,
+    retainedReportBudgets: string[] = [],
   ) {
+    if (!Types.ObjectId.isValid(itemId))
+      throw new BadRequestException(
+        'Budget item is unavailable; choose another item',
+      );
     const item = await this.items
       .findOne(
         {
@@ -55,7 +115,7 @@ export class TransactionsService {
           isDeleted: false,
         },
         null,
-        session ? { session } : {},
+        { session },
       )
       .exec();
     const budget =
@@ -68,7 +128,7 @@ export class TransactionsService {
             isDeleted: false,
           },
           null,
-          session ? { session } : {},
+          { session },
         )
         .exec());
     if (!item || !budget) {
@@ -76,6 +136,11 @@ export class TransactionsService {
         'Budget item is unavailable; choose another item',
       );
     }
+    if (
+      budget.status === 'closed' &&
+      retainedReportBudgets.includes(String(budget._id))
+    )
+      return item;
     if (budget.status !== 'active') {
       throw new BadRequestException('Budget must be active for assignment');
     }
@@ -109,9 +174,11 @@ export class TransactionsService {
     type: string,
     date: Date,
     currency: unknown,
-    session?: ClientSession,
+    session: ClientSession,
+    closedPeriod: boolean,
   ) {
-    const assigned = typeof dto.budgetItemId === 'string';
+    const itemId = dto.budgetItemId;
+    const assigned = typeof itemId === 'string';
     const status = assigned ? 'manual' : 'needs_review';
     if (
       (dto.matchingStatus !== undefined && dto.matchingStatus !== status) ||
@@ -123,10 +190,16 @@ export class TransactionsService {
         'Matching metadata must agree with assignment',
       );
     }
+    if (assigned && closedPeriod)
+      throw new ConflictException({
+        code: 'closed_period_assignment',
+        message:
+          'The purchase date is in a finalized period. Keep the historical link or save the purchase without an active assignment.',
+      });
     if (assigned) {
       await this.validateAssignment(
         userId,
-        dto.budgetItemId!,
+        itemId,
         type,
         date,
         currency,
@@ -156,16 +229,52 @@ export class TransactionsService {
     createTransactionDto: CreateTransactionDto,
     session: ClientSession,
   ): Promise<Transaction> {
+    const owner = new Types.ObjectId(userId);
+    const date = new Date(createTransactionDto.date);
+    const links = await this.closedHistory.links(owner, [date], session);
+    const covered = links.filter((report) =>
+      this.closedHistory.isCovered([report], date),
+    );
+    const itemId = createTransactionDto.budgetItemId;
+    let dto = createTransactionDto;
+    if (covered.length && typeof itemId === 'string') {
+      // A create that loses the close race may still arrive for the old item.
+      // Verify the intent belongs to this period, then retain the purchase for review.
+      const item = await this.validateAssignment(
+        userId,
+        itemId,
+        dto.type,
+        date,
+        dto.currency ?? 'DOP',
+        session,
+        covered.map((report) => report.budgetId.toString()),
+      );
+      if (
+        !covered.some((report) => report.budgetId.equals(item.budgetId)) ||
+        item.type !== dto.type
+      )
+        throw new ConflictException(
+          'Choose no assignment for a purchase in a finalized period',
+        );
+      dto = {
+        ...dto,
+        budgetItemId: null,
+        matchingStatus: 'needs_review',
+        matchingSource: undefined,
+        matchingConfidence: undefined,
+      };
+    }
     const assignment = await this.assignment(
       userId,
-      createTransactionDto,
+      dto,
       createTransactionDto.type,
       createTransactionDto.date,
       createTransactionDto.currency ?? 'DOP',
       session,
+      covered.length > 0,
     );
     const createdTransaction = new this.transactionModel({
-      ...createTransactionDto,
+      ...dto,
       ...assignment,
       currency: createTransactionDto.currency ?? 'DOP',
       currencyContextVersion: 1,
@@ -178,7 +287,16 @@ export class TransactionsService {
         ? new Types.ObjectId(createTransactionDto.accountId)
         : undefined,
     });
-    return createdTransaction.save({ session });
+    const saved = await createdTransaction.save({ session });
+    await this.closedHistory.record(
+      owner,
+      saved._id,
+      links,
+      null,
+      saved,
+      session,
+    );
+    return saved;
   }
 
   async findAll(userId: string, filterDto: GetTransactionsFilterDto) {
@@ -250,7 +368,7 @@ export class TransactionsService {
     const [data, total] = await Promise.all([
       this.transactionModel
         .find(query)
-        .sort({ date: -1 })
+        .sort({ date: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .exec(),
@@ -258,7 +376,7 @@ export class TransactionsService {
     ]);
 
     return {
-      data,
+      data: await this.withHistoryContext(userId, data),
       meta: {
         total,
         page,
@@ -279,7 +397,76 @@ export class TransactionsService {
     if (!transaction) {
       throw new NotFoundException(`Transaction #${id} not found`);
     }
-    return transaction;
+    return (await this.withHistoryContext(userId, [transaction]))[0];
+  }
+
+  private async withHistoryContext(
+    userId: string,
+    transactions: TransactionDocument[],
+  ) {
+    const references = new Set(
+      transactions.flatMap(({ budgetItemId }) =>
+        budgetItemId ? [budgetItemId.toString()] : [],
+      ),
+    );
+    const owner = new Types.ObjectId(userId);
+    const flagged = await this.closedHistory.transactionIdsWithExceptions(
+      owner,
+      transactions.map((row) => row._id),
+    );
+    // Include retained soft-deleted rows to preserve historical labels.
+    const items = references.size
+      ? await this.items
+          .find(
+            {
+              userId: owner,
+              _id: {
+                $in: [...references].filter((value) =>
+                  Types.ObjectId.isValid(value),
+                ),
+              },
+            },
+            { name: 1, budgetId: 1 },
+          )
+          .lean()
+          .exec()
+      : [];
+    const parents = items.length
+      ? await this.budgets
+          .find(
+            { userId: owner, _id: { $in: items.map((item) => item.budgetId) } },
+            { name: 1, status: 1 },
+          )
+          .lean()
+          .exec()
+      : [];
+    const byItem = new Map(items.map((item) => [item._id.toString(), item]));
+    const byBudget = new Map(
+      parents.map((budget) => [budget._id.toString(), budget]),
+    );
+    return transactions.map((transaction) => {
+      const item = byItem.get(
+        transaction.budgetItemId?.toString().toLowerCase() ?? '',
+      );
+      const budget = item && byBudget.get(item.budgetId.toString());
+      const hasClosedPeriodExceptions = flagged.has(String(transaction._id));
+      if ((!item || !budget) && !hasClosedPeriodExceptions) return transaction;
+      return {
+        ...transaction.toObject(),
+        ...(hasClosedPeriodExceptions ? { hasClosedPeriodExceptions } : {}),
+        ...(item && budget
+          ? {
+              assignmentContext: {
+                budgetItemId: item._id,
+                budgetItemName: item.name,
+                budgetId: budget._id,
+                budgetName: budget.name,
+                budgetStatus: budget.status,
+              },
+            }
+          : {}),
+      };
+    });
   }
 
   async update(
@@ -288,18 +475,16 @@ export class TransactionsService {
     updateTransactionDto: UpdateTransactionDto,
   ): Promise<Transaction> {
     return coverageWrite(this.transactionModel.db, userId, (session) =>
-      updateTransactionDto.rememberMerchant === true
-        ? this.rememberAssignment(id, userId, updateTransactionDto, session)
-        : this.updateExisting(id, userId, updateTransactionDto, session),
+      this.updateExisting(id, userId, updateTransactionDto, session),
     );
   }
 
   private async rememberAssignment(
-    id: string,
+    current: Transaction,
     userId: string,
     dto: UpdateTransactionDto,
     session: ClientSession,
-  ): Promise<Transaction> {
+  ): Promise<void> {
     if (
       typeof dto.budgetItemId !== 'string' ||
       !Types.ObjectId.isValid(dto.budgetItemId)
@@ -317,94 +502,63 @@ export class TransactionsService {
     };
     const error = matchingRulesError([rule]);
     if (error) throw new BadRequestException(error);
-    try {
-      const activeSession = session;
-      const result = await (async () => {
-        const current = await this.transactionModel
-          .findOne(
-            {
-              _id: new Types.ObjectId(id),
-              userId: new Types.ObjectId(userId),
-            },
-            null,
-            { session: activeSession },
-          )
-          .exec();
-        if (!current) throw new NotFoundException('Transaction is unavailable');
-        if (
-          current.type !== 'expense' ||
-          (dto.type ?? current.type) !== 'expense'
-        ) {
-          throw new BadRequestException(
-            'Remember is available only for expenses',
-          );
-        }
-        const item = await this.validateAssignment(
-          userId,
-          dto.budgetItemId!,
-          'expense',
-          dto.date ?? current.date,
-          dto.currency ?? current.currency,
-          activeSession,
-        );
-        const normalization = new MerchantNormalizationService();
-        const equivalent = item.matchingRules.find(
-          (candidate) =>
-            candidate.field === 'merchant' &&
-            candidate.operator === 'contains' &&
-            normalization.normalize(candidate.value) ===
-              normalization.normalize(rule.value),
-        );
-        if (!equivalent || equivalent.source === 'suggested') {
-          const rules = item.matchingRules.map((candidate) => ({
-            id: candidate.id,
-            field: candidate.field,
-            operator: candidate.operator,
-            value: candidate.value,
-            source: candidate === equivalent ? 'learned' : candidate.source,
-          }));
-          if (!equivalent) rules.push(rule);
-          const rulesError = matchingRulesError(rules);
-          if (rulesError) throw new BadRequestException(rulesError);
-          // A write to the same item serializes concurrent learning attempts.
-          // Mongo retries write conflicts with a fresh snapshot via withTransaction.
-          const written = await this.items
-            .updateOne(
-              {
-                _id: item._id,
-                userId: new Types.ObjectId(userId),
-                isDeleted: false,
-              },
-              equivalent
-                ? { $set: { 'matchingRules.$[rule].source': 'learned' } }
-                : { $push: { matchingRules: rule } },
-              {
-                session: activeSession,
-                runValidators: true,
-                ...(equivalent
-                  ? { arrayFilters: [{ 'rule.id': equivalent.id }] }
-                  : {}),
-              },
-            )
-            .exec();
-          if (written.matchedCount !== 1) {
-            throw new BadRequestException(
-              'Budget item changed; reload and retry',
-            );
-          }
-        }
-        return this.updateExisting(id, userId, dto, activeSession);
-      })();
-      if (!result)
-        throw new ServiceUnavailableException(
-          'Remember was not committed; retry',
-        );
-      return result;
-    } catch (error) {
-      if (error instanceof HttpException) throw error;
-      throw new ServiceUnavailableException(
-        'Could not save assignment and merchant rule together; transactional database required. Retry or assign without remember',
-      );
+    if (
+      current.type !== 'expense' ||
+      (dto.type ?? current.type) !== 'expense'
+    ) {
+      throw new BadRequestException('Remember is available only for expenses');
+    }
+    const item = await this.validateAssignment(
+      userId,
+      dto.budgetItemId,
+      'expense',
+      dto.date ?? current.date,
+      correctedPurchaseCurrency(current.currency, dto.currency),
+      session,
+    );
+    const normalization = new MerchantNormalizationService();
+    const equivalent = item.matchingRules.find(
+      (candidate) =>
+        candidate.field === 'merchant' &&
+        candidate.operator === 'contains' &&
+        normalization.normalize(candidate.value) ===
+          normalization.normalize(rule.value),
+    );
+    if (!equivalent || equivalent.source === 'suggested') {
+      const rules = item.matchingRules.map((candidate) => ({
+        id: candidate.id,
+        field: candidate.field,
+        operator: candidate.operator,
+        value: candidate.value,
+        source: candidate === equivalent ? 'learned' : candidate.source,
+      }));
+      if (!equivalent) rules.push(rule);
+      const rulesError = matchingRulesError(rules);
+      if (rulesError) throw new BadRequestException(rulesError);
+      // A write to the same item serializes concurrent learning attempts.
+      // Mongo retries write conflicts with a fresh snapshot via withTransaction.
+      const written = await this.items
+        .updateOne(
+          {
+            _id: item._id,
+            userId: new Types.ObjectId(userId),
+            isDeleted: false,
+          },
+          equivalent
+            ? { $set: { 'matchingRules.$[rule].source': 'learned' } }
+            : { $push: { matchingRules: rule } },
+          {
+            session,
+            runValidators: true,
+            ...(equivalent
+              ? { arrayFilters: [{ 'rule.id': equivalent.id }] }
+              : {}),
+          },
+        )
+        .exec();
+      if (written.matchedCount !== 1) {
+        throw new BadRequestException('Budget item changed; reload and retry');
+      }
     }
   }
 
@@ -412,42 +566,94 @@ export class TransactionsService {
     id: string,
     userId: string,
     updateTransactionDto: UpdateTransactionDto,
-    session?: ClientSession,
+    session: ClientSession,
   ): Promise<Transaction> {
     const { rememberMerchant, merchantKeyword, ...transactionFields } =
       updateTransactionDto;
-    void rememberMerchant;
     void merchantKeyword;
     const updateData: Record<string, unknown> = { ...transactionFields };
-    if (updateTransactionDto.currency !== undefined) {
-      updateData.currencyContextVersion = 1;
-      updateData.currencyOrigin = 'explicit-resolution';
-    }
     const unset: Record<string, 1> = {};
-    const filter: Record<string, unknown> = {
+    const filter = {
       _id: new Types.ObjectId(id),
       userId: new Types.ObjectId(userId),
     };
+    const current = await this.transactionModel
+      .findOne(filter, null, { session, lean: true })
+      .exec();
+    if (!current) throw new NotFoundException('Transaction is unavailable');
+    const currency = correctedPurchaseCurrency(
+      current.currency,
+      updateTransactionDto.currency,
+    );
+    const resolvesCurrency =
+      updateTransactionDto.currency !== undefined &&
+      currency !== current.currency;
+    if (resolvesCurrency) {
+      updateData.currencyContextVersion = 1;
+      updateData.currencyOrigin = 'explicit-resolution';
+    } else {
+      delete updateData.currency;
+    }
     const checksAssignment =
       typeof updateTransactionDto.budgetItemId === 'string' ||
       (updateTransactionDto.budgetItemId === undefined &&
         (updateTransactionDto.date !== undefined ||
-          updateTransactionDto.currency !== undefined ||
+          resolvesCurrency ||
           updateTransactionDto.type !== undefined));
-    let current: Transaction | undefined;
+    const date = new Date(updateTransactionDto.date ?? current.date);
+    const links = await this.closedHistory.links(
+      filter.userId,
+      [current.date, date],
+      session,
+      filter._id,
+    );
+    const closedBudget = await this.closedAssignmentBudget(
+      current,
+      filter.userId,
+      session,
+    );
+    if (
+      closedBudget &&
+      !links.some((report) => report.budgetId.equals(closedBudget))
+    ) {
+      throw legacyHistoryRetained();
+    }
+    if (rememberMerchant === true) {
+      await this.rememberAssignment(
+        current,
+        userId,
+        updateTransactionDto,
+        session,
+      );
+    }
+    const retainedReportBudgets = links
+      .filter((report) =>
+        report.includedTransactionIds?.includes(filter._id.toString()),
+      )
+      .map((report) => report.budgetId.toString());
+    const closedPeriod = this.closedHistory.isCovered(links, date);
     if (checksAssignment) {
-      current = session
-        ? ((await this.transactionModel
-            .findOne(filter, null, { session })
-            .exec()) ?? undefined)
-        : await this.findOne(id, userId);
-      if (!current) throw new NotFoundException('Transaction is unavailable');
       // Validate and write against the same effective transaction values.
       Object.assign(filter, {
         date: current.date,
         type: current.type,
-        currency: current.currency ?? null,
-        budgetItemId: current.budgetItemId ?? null,
+        // Match the raw legacy values without Mongoose casting string item IDs.
+        $expr: {
+          $and: [
+            {
+              $eq: [
+                { $ifNull: ['$currency', null] },
+                { $literal: current.currency ?? null },
+              ],
+            },
+            {
+              $eq: [
+                { $ifNull: ['$budgetItemId', null] },
+                { $literal: current.budgetItemId ?? null },
+              ],
+            },
+          ],
+        },
       });
       if (
         updateTransactionDto.budgetItemId === undefined &&
@@ -458,8 +664,9 @@ export class TransactionsService {
           current.budgetItemId.toString(),
           updateTransactionDto.type ?? current.type,
           updateTransactionDto.date ?? current.date,
-          updateTransactionDto.currency ?? current.currency,
+          currency,
           session,
+          retainedReportBudgets,
         );
       }
     }
@@ -467,10 +674,11 @@ export class TransactionsService {
       const assignment = await this.assignment(
         userId,
         updateTransactionDto,
-        updateTransactionDto.type ?? current?.type ?? '',
-        updateTransactionDto.date ?? current?.date ?? new Date(NaN),
-        updateTransactionDto.currency ?? current?.currency,
+        updateTransactionDto.type ?? current.type,
+        date,
+        currency,
         session,
+        closedPeriod,
       );
       Object.assign(updateData, assignment);
       unset.matchingConfidence = 1;
@@ -500,7 +708,7 @@ export class TransactionsService {
           $set: updateData,
           ...(Object.keys(unset).length ? { $unset: unset } : {}),
         },
-        { new: true, runValidators: true, ...(session ? { session } : {}) },
+        { new: true, runValidators: true, session, lean: true },
       )
       .exec();
 
@@ -513,19 +721,60 @@ export class TransactionsService {
       throw new NotFoundException(`Transaction #${id} not found`);
     }
 
-    return existingTransaction;
+    await this.closedHistory.record(
+      filter.userId,
+      filter._id,
+      links,
+      current,
+      existingTransaction,
+      session,
+    );
+    return this.transactionModel.hydrate(existingTransaction);
+  }
+
+  async exceptions(id: string, userId: string, page: number, limit: number) {
+    if (!Types.ObjectId.isValid(id))
+      throw new NotFoundException('Transaction is unavailable');
+    const transactionId = new Types.ObjectId(id);
+    if (
+      !(await this.transactionModel
+        .exists({ _id: transactionId, userId: new Types.ObjectId(userId) })
+        .exec())
+    )
+      throw new NotFoundException('Transaction is unavailable');
+    return this.closedHistory.listForTransaction(
+      userId,
+      transactionId,
+      page,
+      limit,
+    );
   }
 
   async remove(id: string, userId: string): Promise<void> {
-    const deletedTransaction = await this.transactionModel
-      .findOneAndDelete({
-        _id: new Types.ObjectId(id),
-        userId: new Types.ObjectId(userId),
-      })
-      .exec();
-
-    if (!deletedTransaction) {
-      throw new NotFoundException(`Transaction #${id} not found`);
-    }
+    if (!Types.ObjectId.isValid(id))
+      throw new NotFoundException('Transaction is unavailable');
+    const filter = {
+      _id: new Types.ObjectId(id),
+      userId: new Types.ObjectId(userId),
+    };
+    await coverageWrite(this.transactionModel.db, userId, async (session) => {
+      await this.closedHistory.protectDeletion(
+        filter.userId,
+        filter._id,
+        session,
+      );
+      const current = await this.transactionModel
+        .findOne(filter, { budgetItemId: 1 }, { session, lean: true })
+        .exec();
+      if (!current) throw new NotFoundException('Transaction is unavailable');
+      if (await this.closedAssignmentBudget(current, filter.userId, session)) {
+        throw legacyHistoryRetained();
+      }
+      const deleted = await this.transactionModel
+        .findOneAndDelete(filter, { session })
+        .exec();
+      if (!deleted) throw new NotFoundException('Transaction is unavailable');
+      return true;
+    });
   }
 }

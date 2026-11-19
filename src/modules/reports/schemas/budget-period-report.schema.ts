@@ -1,8 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongoSchema, Types } from 'mongoose';
 import { User } from '@/modules/users/schemas/user.schema';
 import { Budget } from '@/modules/budgets/schemas/budget.schema';
 import { BudgetItem } from '@/modules/budgets/schemas/budget-item.schema';
+import type { Transaction } from '@/modules/transactions/schemas/transaction.schema';
 import {
   ReportCurrencyContext,
   ReportCurrencyContextSchema,
@@ -10,6 +11,20 @@ import {
 } from './report-currency-context.schema';
 
 export type BudgetPeriodReportDocument = BudgetPeriodReport & Document;
+
+export type SavedReportTransaction = Omit<
+  Transaction,
+  'userId' | 'accountId' | 'budgetItemId' | 'currency'
+> & {
+  transactionId: string;
+  budgetItemId: string | null;
+  accountId?: string;
+  currency: string | null;
+};
+
+function isFinalSnapshot(this: BudgetPeriodReport): boolean {
+  return this.snapshotVersion === 1;
+}
 
 @Schema({ _id: false })
 class BudgetTotals {
@@ -28,6 +43,27 @@ class BudgetTotals {
 
 @Schema({ _id: false })
 class ReportItem {
+  @Prop()
+  type?: string;
+
+  @Prop()
+  description?: string;
+
+  @Prop()
+  icon?: string;
+
+  @Prop()
+  color?: string;
+
+  @Prop()
+  alertEnabled?: boolean;
+
+  @Prop({ type: [MongoSchema.Types.Mixed], default: undefined })
+  matchingRules?: unknown[];
+
+  @Prop()
+  configuredPlannedAmount?: number;
+
   @Prop({ type: Types.ObjectId, ref: BudgetItem.name, required: true })
   budgetItemId!: Types.ObjectId;
 
@@ -46,6 +82,28 @@ class ReportItem {
 
 @Schema({ timestamps: { createdAt: true, updatedAt: false } })
 export class BudgetPeriodReport {
+  @Prop({ enum: [1] })
+  snapshotVersion?: number;
+
+  @Prop({ required: isFinalSnapshot })
+  timezone?: string;
+
+  @Prop({ type: Date })
+  plannedEndDate?: Date | null;
+
+  @Prop({ required: isFinalSnapshot })
+  actualCutoffDate?: Date;
+
+  @Prop({ type: [String], default: undefined, required: isFinalSnapshot })
+  includedTransactionIds?: string[];
+
+  @Prop({
+    type: [MongoSchema.Types.Mixed],
+    default: undefined,
+    required: isFinalSnapshot,
+  })
+  transactions?: SavedReportTransaction[];
+
   @Prop({
     type: ReportCurrencyContextSchema,
     required: true,
@@ -88,3 +146,17 @@ export class BudgetPeriodReport {
 
 export const BudgetPeriodReportSchema =
   SchemaFactory.createForClass(BudgetPeriodReport);
+BudgetPeriodReportSchema.index(
+  { userId: 1, budgetId: 1 },
+  { unique: true, partialFilterExpression: { snapshotVersion: 1 } },
+);
+BudgetPeriodReportSchema.index({
+  userId: 1,
+  snapshotVersion: 1,
+  includedTransactionIds: 1,
+});
+BudgetPeriodReportSchema.index({
+  userId: 1,
+  snapshotVersion: 1,
+  actualCutoffDate: 1,
+});

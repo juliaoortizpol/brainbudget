@@ -1,3 +1,4 @@
+import { ClosedPeriodHistoryService } from '../reports/closed-period-history.service';
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -44,6 +45,12 @@ describe('transaction review query', () => {
         })),
       } as unknown as Model<BudgetDocument>,
       {} as Model<BudgetItemDocument>,
+      {
+        links: jest.fn().mockResolvedValue([]),
+        isCovered: jest.fn().mockReturnValue(false),
+        record: jest.fn().mockResolvedValue(undefined),
+        transactionIdsWithExceptions: jest.fn().mockResolvedValue(new Set()),
+      } as unknown as ClosedPeriodHistoryService,
     );
     return { service, find, countDocuments, chain };
   }
@@ -84,7 +91,7 @@ describe('transaction review query', () => {
     };
     expect(find).toHaveBeenCalledWith(expected);
     expect(countDocuments).toHaveBeenCalledWith(expected);
-    expect(chain.sort).toHaveBeenCalledWith({ date: -1 });
+    expect(chain.sort).toHaveBeenCalledWith({ date: -1, _id: -1 });
     expect(chain.skip).toHaveBeenCalledWith(2);
     expect(chain.limit).toHaveBeenCalledWith(2);
     expect(result).toEqual({

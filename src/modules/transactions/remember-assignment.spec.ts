@@ -1,3 +1,4 @@
+import { ClosedPeriodHistoryService } from '../reports/closed-period-history.service';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { Model, Types } from 'mongoose';
@@ -35,7 +36,10 @@ describe('remember assignment (controlled persistence)', () => {
     [unknown, { $set: Record<string, unknown> }, { session?: unknown }]
   >;
   let session: { withTransaction: jest.Mock; endSession: jest.Mock };
-  const query = <T>(value: T) => ({ exec: () => Promise.resolve(value) });
+  function query<T>(value: T) {
+    const result = { exec: () => Promise.resolve(value), lean: () => result };
+    return result;
+  }
 
   beforeEach(() => {
     rules = [
@@ -118,6 +122,7 @@ describe('remember assignment (controlled persistence)', () => {
       },
       findOne: jest.fn(() => query(transactionAvailable ? transaction : null)),
       findOneAndUpdate: transactionWrite,
+      hydrate: (row: unknown) => row,
     };
     const items = {
       findOne: jest.fn(() =>
@@ -136,24 +141,34 @@ describe('remember assignment (controlled persistence)', () => {
       updateOne: itemWrite,
     };
     const budgets = {
-      findOne: jest.fn(() =>
-        query({
-          status: 'active',
-          currencyContext: {
-            version: 1,
-            currency: 'DOP',
-            origin: 'dop-v1-planning',
-          },
+      findOne: jest.fn((filter: { status?: string }) =>
+        query(
+          filter.status === 'closed'
+            ? null
+            : {
+                status: 'active',
+                currencyContext: {
+                  version: 1,
+                  currency: 'DOP',
+                  origin: 'dop-v1-planning',
+                },
 
-          startDate: new Date('2026-11-01'),
-          endDate: new Date('2026-11-30'),
-        }),
+                startDate: new Date('2026-11-01'),
+                endDate: new Date('2026-11-30'),
+              },
+        ),
       ),
     };
     service = new TransactionsService(
       transactions as unknown as Model<TransactionDocument>,
       budgets as unknown as Model<BudgetDocument>,
       items as unknown as Model<BudgetItemDocument>,
+      {
+        links: jest.fn().mockResolvedValue([]),
+        isCovered: jest.fn().mockReturnValue(false),
+        record: jest.fn().mockResolvedValue(undefined),
+        transactionIdsWithExceptions: jest.fn().mockResolvedValue(new Set()),
+      } as unknown as ClosedPeriodHistoryService,
     );
   });
 
@@ -275,6 +290,26 @@ describe('remember assignment (controlled persistence)', () => {
       expect(rules).toHaveLength(1);
     },
   );
+
+  it('TC2 rejects relabelling a parser-backed USD purchase before learning or assignment writes', async () => {
+    Object.assign(transaction, {
+      currency: 'USD',
+      currencyOrigin: 'mail-parser',
+      currencyContextVersion: 1,
+      amount: 20,
+    });
+    const before = { ...transaction };
+    await expect(
+      service.update(String(id), String(userId), {
+        ...request,
+        currency: 'DOP',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'purchase_currency_locked' } });
+    expect(itemWrite).not.toHaveBeenCalled();
+    expect(transactionWrite).not.toHaveBeenCalled();
+    expect(transaction).toEqual(before);
+    expect(rules).toHaveLength(1);
+  });
 
   it.each(['transaction', 'item', 'income', 'clear', 'limit'] as const)(
     'rejects invalid %s without mutation',

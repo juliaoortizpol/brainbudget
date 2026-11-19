@@ -1,3 +1,4 @@
+import { ClosedPeriodHistoryModule } from '../reports/closed-period-history.module';
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TransactionsService } from './transactions.service';
@@ -12,6 +13,7 @@ import {
 
 @Module({
   imports: [
+    ClosedPeriodHistoryModule,
     MongooseModule.forFeature([
       { name: Transaction.name, schema: TransactionSchema },
       { name: Budget.name, schema: BudgetSchema },

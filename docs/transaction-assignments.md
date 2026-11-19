@@ -24,6 +24,9 @@ transaction write. Explicit clearing can accompany incompatible date/type edits.
 Unavailable, foreign and deleted references share a generic actionable error;
 owned live references report inactive budget, type mismatch or out-of-period
 date problems. Rejected requests leave the transaction unchanged.
+BE5 retains closed historical links on permitted corrections and records the
+change separately from the report. A manual arrival targeting a valid item in
+the finalized period saves unassigned for review. See [closing and reports](budget-close-reports.md).
 Eligibility-sensitive PATCH writes compare the read date, type and item reference
 with the persisted transaction. A concurrent change returns HTTP 400 asking the
 caller to reload and retry, rather than applying a stale validation result.

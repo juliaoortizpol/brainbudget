@@ -15,7 +15,8 @@ cutoff and absolute expense amounts rounded to two decimals. See
 [coverage contract](budget-coverage.md) for migration and verification boundaries.
 Transactions may be manual or Gmail-sourced. Imported messages have a per-user
 deduplication key. Accounts and budgets use soft deletion in their services;
-transaction removal currently uses physical deletion.
+transaction removal uses physical deletion for ordinary purchases. Final
+report evidence is retained. See [closing and reports](budget-close-reports.md).
 
 ## Requirements and open decisions
 Trello acceptance criteria govern each change. This inventory describes code,

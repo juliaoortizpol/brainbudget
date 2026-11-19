@@ -1,3 +1,4 @@
+import { ClosedPeriodHistoryService } from '../reports/closed-period-history.service';
 import { coverageTestConnection } from '../../../test/coverage-test-support';
 import { BadRequestException } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
@@ -29,12 +30,34 @@ describe('manual transaction assignments', () => {
       { $set: Record<string, unknown>; $unset?: Record<string, number> },
     ]
   >;
-  let items: { findOne: jest.Mock<unknown, [Record<string, unknown>]> };
-  let budgets: { findOne: jest.Mock<unknown, [Record<string, unknown>]> };
+  type ReferenceQuery = [
+    Record<string, unknown>,
+    unknown?,
+    { session?: unknown }?,
+  ];
+  let items: {
+    findOne: jest.Mock<unknown, ReferenceQuery>;
+    updateOne: jest.Mock;
+  };
+  let budgets: { findOne: jest.Mock<unknown, ReferenceQuery> };
   let service: TransactionsService;
+  let history: {
+    links: jest.Mock;
+    isCovered: jest.Mock;
+    record: jest.Mock;
+    protectDeletion: jest.Mock;
+    transactionIdsWithExceptions: jest.Mock;
+  };
+  let connection: ReturnType<typeof coverageTestConnection>;
+  let remove: jest.Mock;
   let current: Record<string, unknown>;
   let item: Record<string, unknown> | null;
   let budget: Record<string, unknown> | null;
+
+  function query(value: unknown) {
+    const result = { exec: () => Promise.resolve(value), lean: () => result };
+    return result;
+  }
 
   beforeEach(() => {
     saved = {};
@@ -58,13 +81,19 @@ describe('manual transaction assignments', () => {
       startDate: new Date('2026-11-01T00:00:00Z'),
       endDate: new Date('2026-11-30T00:00:00Z'),
     };
+    connection = coverageTestConnection();
+    remove = jest
+      .fn()
+      .mockReturnValue({ exec: () => Promise.resolve({ _id: id }) });
     class TransactionModel {
-      static db = coverageTestConnection();
+      static db = connection;
+      static findOneAndDelete = remove;
+      static hydrate = (row: unknown) => row;
       constructor(data: Record<string, unknown>) {
         saved = data;
       }
       save() {
-        return Promise.resolve(saved);
+        return Promise.resolve({ ...saved, _id: new Types.ObjectId(id) });
       }
       static findOne = jest
         .fn()
@@ -80,20 +109,243 @@ describe('manual transaction assignments', () => {
     update = TransactionModel.findOneAndUpdate;
     update.mockReturnValue({ exec: () => Promise.resolve({ _id: id }) });
     items = {
-      findOne: jest.fn<unknown, [Record<string, unknown>]>().mockReturnValue({
-        exec: () => Promise.resolve(item),
-      }),
+      findOne: jest
+        .fn<unknown, ReferenceQuery>()
+        .mockImplementation((filter) =>
+          query(filter.isDeleted === false && item?.isDeleted ? null : item),
+        ),
+      updateOne: jest.fn(),
     };
     budgets = {
       findOne: jest
-        .fn<unknown, [Record<string, unknown>]>()
-        .mockReturnValue({ exec: () => Promise.resolve(budget) }),
+        .fn<unknown, ReferenceQuery>()
+        .mockImplementation((filter) =>
+          query(
+            (filter.status && budget?.status !== filter.status) ||
+              (filter.isDeleted === false && budget?.isDeleted)
+              ? null
+              : budget,
+          ),
+        ),
+    };
+    history = {
+      links: jest.fn().mockResolvedValue([]),
+      isCovered: jest.fn().mockReturnValue(false),
+      record: jest.fn().mockResolvedValue(undefined),
+      protectDeletion: jest.fn().mockResolvedValue(undefined),
+      transactionIdsWithExceptions: jest.fn().mockResolvedValue(new Set()),
     };
     service = new TransactionsService(
       TransactionModel as unknown as Model<TransactionDocument>,
       budgets as unknown as Model<BudgetDocument>,
       items as unknown as Model<BudgetItemDocument>,
+      history as unknown as ClosedPeriodHistoryService,
     );
+  });
+
+  it('TC4/TC9 retains a manual create targeting an item whose period finalized first', async () => {
+    const reportBudget = item?.budgetId;
+    budget = { ...budget, status: 'closed', _id: reportBudget };
+    history.links.mockResolvedValue([{ budgetId: reportBudget }]);
+    history.isCovered.mockReturnValue(true);
+    const dto = plainToInstance(CreateTransactionDto, {
+      ...payload,
+      budgetItemId: itemId,
+    });
+    await service.create(userId, dto);
+    expect(saved).toMatchObject({
+      matchingStatus: 'needs_review',
+      budgetItemId: undefined,
+    });
+    expect(history.links).toHaveBeenCalledWith(
+      new Types.ObjectId(userId),
+      [new Date(dto.date)],
+      connection.session,
+    );
+    expect(connection.lock.mock.invocationCallOrder[0]).toBeLessThan(
+      history.links.mock.invocationCallOrder[0],
+    );
+    expect(history.record).toHaveBeenCalledWith(
+      new Types.ObjectId(userId),
+      new Types.ObjectId(id),
+      [{ budgetId: reportBudget }],
+      null,
+      { ...saved, _id: new Types.ObjectId(id) },
+      connection.session,
+    );
+  });
+
+  it('TC4 rejects assignment of a covered purchase after finalization without any write', async () => {
+    history.isCovered.mockReturnValue(true);
+    await expect(
+      service.update(id, userId, { budgetItemId: itemId }),
+    ).rejects.toMatchObject({ response: { code: 'closed_period_assignment' } });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('TC10 permits a date and type correction on a retained closed item without changing its original association', async () => {
+    const reportBudget = item?.budgetId;
+    current.budgetItemId = itemId;
+    budget = { ...budget, status: 'closed', _id: reportBudget };
+    history.links.mockResolvedValue([
+      { budgetId: reportBudget, includedTransactionIds: [id] },
+    ]);
+    const corrected = {
+      type: 'income',
+      date: new Date('2026-12-01T15:00:00Z'),
+    };
+    await service.update(id, userId, corrected);
+    expect(update.mock.calls[0][1]).toEqual({ $set: corrected });
+    expect(update.mock.calls[0][0]).toMatchObject({
+      $expr: {
+        $and: [
+          {
+            $eq: [
+              { $ifNull: ['$currency', null] },
+              { $literal: current.currency },
+            ],
+          },
+          { $eq: [{ $ifNull: ['$budgetItemId', null] }, { $literal: itemId }] },
+        ],
+      },
+    });
+    expect(history.record).toHaveBeenCalledTimes(1);
+  });
+
+  it('TC10 aborts the transaction when writing a correction exception fails', async () => {
+    let committed = false;
+    connection.session.withTransaction.mockImplementation(
+      async (work: () => Promise<unknown>) => {
+        const result = await work();
+        committed = true;
+        return result;
+      },
+    );
+    history.record.mockRejectedValue(
+      new Error('Injected exception save failure'),
+    );
+    await expect(service.update(id, userId, { amount: 20 })).rejects.toThrow(
+      'transactional database required',
+    );
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(history.record).toHaveBeenCalledWith(
+      new Types.ObjectId(userId),
+      new Types.ObjectId(id),
+      [],
+      current,
+      { _id: id },
+      connection.session,
+    );
+    expect(committed).toBe(false);
+  });
+
+  it('TC10 checks history under the owner lock before deletion and keeps ordinary deletion', async () => {
+    history.protectDeletion.mockRejectedValueOnce(
+      new BadRequestException('Report evidence is retained'),
+    );
+    await expect(service.remove(id, userId)).rejects.toThrow(
+      'Report evidence is retained',
+    );
+    expect(remove).not.toHaveBeenCalled();
+    await expect(service.remove(id, userId)).resolves.toBeUndefined();
+    expect(remove).toHaveBeenCalledWith(
+      { _id: new Types.ObjectId(id), userId: new Types.ObjectId(userId) },
+      { session: connection.session },
+    );
+    expect(history.protectDeletion.mock.invocationCallOrder[1]).toBeLessThan(
+      remove.mock.invocationCallOrder[0],
+    );
+  });
+
+  describe('BE5-R2 legacy closed history (TC5/TC10/TC11)', () => {
+    beforeEach(() => {
+      budget = { _id: item?.budgetId, status: 'closed' };
+    });
+
+    it.each([false, true])(
+      'blocks physical deletion for retained references (retired: %s)',
+      async (retired) => {
+        item = { ...item, isDeleted: retired };
+        budget = { ...budget, isDeleted: retired };
+        current.budgetItemId = itemId.toUpperCase();
+        await expect(service.remove(id, userId)).rejects.toMatchObject({
+          status: 409,
+          response: { code: 'legacy_closed_transaction_retained' },
+        });
+        const owner = new Types.ObjectId(userId);
+        expect(items.findOne).toHaveBeenCalledWith(
+          { _id: new Types.ObjectId(itemId), userId: owner },
+          { budgetId: 1 },
+          { session: connection.session },
+        );
+        expect(budgets.findOne).toHaveBeenCalledWith(
+          { _id: item.budgetId, userId: owner, status: 'closed' },
+          { _id: 1 },
+          { session: connection.session },
+        );
+        expect(connection.lock.mock.invocationCallOrder[0]).toBeLessThan(
+          items.findOne.mock.invocationCallOrder[0],
+        );
+        expect(remove).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      { budgetItemId: null },
+      { budgetItemId: itemId, rememberMerchant: true, merchantKeyword: 'Shop' },
+      { amount: 20 },
+      { type: 'income', date: new Date('2026-12-01') },
+      { rawDescription: 'Changed', normalizedMerchant: 'Changed' },
+      { accountId: new Types.ObjectId().toString(), notes: 'Changed' },
+      { currency: 'DOP' },
+    ])('preserves the only legacy evidence on PATCH %j', async (dto) => {
+      delete current.currency;
+      item = { ...item, isDeleted: true };
+      budget = { ...budget, isDeleted: true };
+      // Another period cannot audit the original association.
+      history.links.mockResolvedValue([{ budgetId: new Types.ObjectId() }]);
+      await expect(service.update(id, userId, dto)).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'legacy_closed_transaction_retained' },
+      });
+      expect(update).not.toHaveBeenCalled();
+      expect(items.updateOne).not.toHaveBeenCalled();
+      expect(history.record).not.toHaveBeenCalled();
+    });
+
+    it.each(['item', 'parent'] as const)(
+      'keeps ordinary deletion when the %s belongs to another owner',
+      async (foreign) => {
+        const model = foreign === 'item' ? items : budgets;
+        const foreignOwner = new Types.ObjectId();
+        model.findOne.mockImplementation((filter) =>
+          query(foreignOwner.equals(String(filter.userId)) ? budget : null),
+        );
+        await expect(service.remove(id, userId)).resolves.toBeUndefined();
+        expect(remove).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    it('allows V1 clearing with original assignment evidence in the same audit session', async () => {
+      const links = [
+        { budgetId: item?.budgetId, includedTransactionIds: [id] },
+      ];
+      history.links.mockResolvedValue(links);
+      const after = { ...current, budgetItemId: undefined };
+      update.mockReturnValue(query(after));
+      await expect(
+        service.update(id, userId, { budgetItemId: null }),
+      ).resolves.toBe(after);
+      expect(update.mock.calls[0][1].$unset).toHaveProperty('budgetItemId', 1);
+      expect(history.record).toHaveBeenCalledWith(
+        new Types.ObjectId(userId),
+        new Types.ObjectId(id),
+        links,
+        current,
+        after,
+        connection.session,
+      );
+    });
   });
 
   it('accepts the frontend payload and creates an unassigned needs-review transaction', async () => {
@@ -137,7 +389,13 @@ describe('manual transaction assignments', () => {
     },
   );
 
-  it('TC3 rejects currency changes retaining assignment, but allows explicit clearing', async () => {
+  it('TC2 protects known currency even when clearing the item and allows unknown-to-USD with explicit clearing', async () => {
+    await expect(
+      service.update(id, userId, { currency: 'USD', budgetItemId: null }),
+    ).rejects.toMatchObject({ response: { code: 'purchase_currency_locked' } });
+    expect(update).not.toHaveBeenCalled();
+
+    delete current.currency;
     await expect(
       service.update(id, userId, { currency: 'USD' }),
     ).rejects.toThrow('Only DOP');
@@ -242,7 +500,7 @@ describe('manual transaction assignments', () => {
   });
 
   it('rejects unavailable or foreign references', async () => {
-    budgets.findOne.mockReturnValue({ exec: () => Promise.resolve(null) });
+    budgets.findOne.mockReturnValue(query(null));
     await expect(
       service.update(id, userId, { budgetItemId: itemId }),
     ).rejects.toThrow(BadRequestException);
@@ -264,9 +522,23 @@ describe('manual transaction assignments', () => {
         _id: new Types.ObjectId(id),
         userId: new Types.ObjectId(userId),
         date: current.date,
-        currency: current.currency,
         type: current.type,
-        budgetItemId: current.budgetItemId,
+        $expr: {
+          $and: [
+            {
+              $eq: [
+                { $ifNull: ['$currency', null] },
+                { $literal: current.currency },
+              ],
+            },
+            {
+              $eq: [
+                { $ifNull: ['$budgetItemId', null] },
+                { $literal: current.budgetItemId },
+              ],
+            },
+          ],
+        },
       },
       {
         $set: {
@@ -280,7 +552,8 @@ describe('manual transaction assignments', () => {
       {
         new: true,
         runValidators: true,
-        session: expect.any(Object) as unknown,
+        session: connection.session,
+        lean: true,
       },
     );
   });
@@ -300,16 +573,16 @@ describe('manual transaction assignments', () => {
               ),
               isDeleted: reason === 'deleted',
             };
-            model.findOne.mockImplementation((query) => ({
-              exec: () =>
-                Promise.resolve(
-                  reason !== 'missing' &&
-                    String(query.userId) === String(candidate.userId) &&
-                    query.isDeleted === candidate.isDeleted
-                    ? candidate
-                    : null,
-                ),
-            }));
+            model.findOne.mockImplementation((filter) =>
+              query(
+                reason !== 'missing' &&
+                  String(filter.userId) === String(candidate.userId) &&
+                  (filter.isDeleted === undefined ||
+                    filter.isDeleted === candidate.isDeleted)
+                  ? candidate
+                  : null,
+              ),
+            );
             const request =
               operation === 'create'
                 ? service.create(
@@ -329,10 +602,12 @@ describe('manual transaction assignments', () => {
           modelReset();
         }
         function modelReset() {
-          items.findOne.mockReturnValue({ exec: () => Promise.resolve(item) });
-          budgets.findOne.mockReturnValue({
-            exec: () => Promise.resolve(budget),
-          });
+          items.findOne.mockImplementation(() => query(item));
+          budgets.findOne.mockImplementation((filter) =>
+            query(
+              filter.status && budget?.status !== filter.status ? null : budget,
+            ),
+          );
         }
       },
     );
@@ -456,7 +731,7 @@ describe('manual transaction assignments', () => {
         type: 'income',
         date: new Date('2027-01-01'),
       });
-      expect(items.findOne).not.toHaveBeenCalled();
+      expect(items.findOne).toHaveBeenCalledTimes(1);
       expect(update.mock.calls[0][1].$unset).toMatchObject({
         budgetItemId: 1,
         matchingSource: 1,
@@ -479,7 +754,22 @@ describe('manual transaction assignments', () => {
       expect(update.mock.calls[0][0]).toMatchObject({
         date: current.date,
         type: current.type,
-        budgetItemId: current.budgetItemId,
+        $expr: {
+          $and: [
+            {
+              $eq: [
+                { $ifNull: ['$currency', null] },
+                { $literal: current.currency },
+              ],
+            },
+            {
+              $eq: [
+                { $ifNull: ['$budgetItemId', null] },
+                { $literal: current.budgetItemId },
+              ],
+            },
+          ],
+        },
       });
     });
   });

@@ -7,11 +7,9 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import {
   budgetCoverage,
-  completedDayCutoff,
   coverageDateFilter,
   coverageOverlaps,
   validateCoverage,
-  validateFinalCutoff,
 } from './budget-coverage';
 import { coverageWrite } from './coverage-write';
 import { Budget, BudgetDocument } from './schemas/budget.schema';
@@ -103,7 +101,11 @@ export class BudgetsService {
 
     const budgetIds = budgets.map((b) => b._id);
     const allItems = await this.budgetItemModel
-      .find({ budgetId: { $in: budgetIds }, isDeleted: false })
+      .find({
+        budgetId: { $in: budgetIds },
+        userId: new Types.ObjectId(userId),
+        isDeleted: false,
+      })
       .exec();
 
     const itemsByBudget = new Map<string, BudgetItemDocument[]>();
@@ -144,7 +146,7 @@ export class BudgetsService {
     }
 
     const budgetItems = await this.budgetItemModel
-      .find({ budgetId: budget._id, isDeleted: false })
+      .find({ budgetId: budget._id, userId: budget.userId, isDeleted: false })
       .exec();
 
     const items = await this.appendSpentToItems(budget, budgetItems);
@@ -174,6 +176,10 @@ export class BudgetsService {
         )
         .exec();
       if (!current) throw new NotFoundException(`Budget #${id} not found`);
+      if (budgetData.status === 'closed')
+        throw new BadRequestException(
+          'Use POST /budgets/:id/close-preview and POST /budgets/:id/close to confirm closure',
+        );
       if (
         budgetData.currency !== undefined &&
         current.status === 'closed' &&
@@ -196,10 +202,36 @@ export class BudgetsService {
         throw new BadRequestException(
           'Legacy coverage requires explicit migration before lifecycle changes',
         );
-      if (current.status === 'closed' && changesCoverage)
+      if (current.status === 'closed') {
+        if (
+          !current.currencyContext &&
+          budgetData.currency === 'DOP' &&
+          Object.keys(budgetData).filter(
+            (key) => budgetData[key as keyof typeof budgetData] !== undefined,
+          ).length === 1 &&
+          items === undefined
+        ) {
+          await this.budgetModel
+            .updateOne(
+              { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
+              {
+                $set: {
+                  currencyContext: {
+                    version: 1,
+                    currency: 'DOP',
+                    origin: 'explicit-resolution',
+                  },
+                },
+              },
+              { session, runValidators: true },
+            )
+            .exec();
+          return true;
+        }
         throw new BadRequestException(
-          'Final closed coverage cannot be changed or reopened',
+          'Final closed budget configuration cannot be changed or reopened',
         );
+      }
       if (
         current.status !== 'draft' &&
         budgetData.timezone !== undefined &&
@@ -208,8 +240,6 @@ export class BudgetsService {
         throw new BadRequestException('Timezone is preserved after activation');
       if (current.status === 'active' && budgetData.status === 'draft')
         throw new BadRequestException('Active budgets require manual closure');
-      if (budgetData.status === 'closed' && current.status !== 'active')
-        throw new BadRequestException('Only an active budget can be closed');
       const data =
         current.coverageVersion === 1
           ? this.lifecycleData(budgetData, current)
@@ -256,6 +286,8 @@ export class BudgetsService {
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(id);
 
+    await this.requireMutableBudget(id, userId, session);
+
     const deletedBudget = await this.budgetModel
       .findOneAndUpdate(
         { _id: budgetObjectId, userId: userObjectId, isDeleted: false },
@@ -271,7 +303,7 @@ export class BudgetsService {
     // Soft delete associated items
     await this.budgetItemModel
       .updateMany(
-        { budgetId: budgetObjectId, isDeleted: false },
+        { budgetId: budgetObjectId, userId: userObjectId, isDeleted: false },
         { $set: { isDeleted: true, deletedAt: new Date() } },
         { session },
       )
@@ -296,6 +328,7 @@ export class BudgetsService {
     userId: string,
     session: ClientSession,
   ): Promise<BudgetItemDocument> {
+    await this.requireMutableBudget(budgetId, userId, session);
     const deletedItem = await this.budgetItemModel
       .findOneAndUpdate(
         {
@@ -324,19 +357,14 @@ export class BudgetsService {
     const userObjectId = new Types.ObjectId(userId);
     const budgetObjectId = new Types.ObjectId(budgetId);
 
-    const budget = await this.budgetModel
-      .findOne({ _id: budgetObjectId, userId: userObjectId, isDeleted: false })
-      .exec();
-    if (!budget) {
-      throw new NotFoundException(`Budget #${budgetId} not found`);
-    }
-
-    const newItem = new this.budgetItemModel({
-      ...createItemDto,
-      budgetId: budgetObjectId,
-      userId: userObjectId,
+    return coverageWrite(this.budgetModel.db, userId, async (session) => {
+      await this.requireMutableBudget(budgetId, userId, session);
+      return new this.budgetItemModel({
+        ...createItemDto,
+        budgetId: budgetObjectId,
+        userId: userObjectId,
+      }).save({ session });
     });
-    return await newItem.save();
   }
 
   async updateBudgetItem(
@@ -349,23 +377,49 @@ export class BudgetsService {
     const updates = Object.fromEntries(
       Object.entries(updateDto).filter(([, value]) => value !== undefined),
     );
-    const updatedItem = await this.budgetItemModel
-      .findOneAndUpdate(
+    return coverageWrite(this.budgetModel.db, userId, async (session) => {
+      await this.requireMutableBudget(budgetId, userId, session);
+      const updatedItem = await this.budgetItemModel
+        .findOneAndUpdate(
+          {
+            _id: new Types.ObjectId(itemId),
+            budgetId: new Types.ObjectId(budgetId),
+            userId: new Types.ObjectId(userId),
+            isDeleted: false,
+          },
+          { $set: updates },
+          { new: true, runValidators: true, session },
+        )
+        .exec();
+
+      if (!updatedItem) {
+        throw new NotFoundException(`Budget item #${itemId} not found`);
+      }
+      return updatedItem;
+    });
+  }
+
+  private async requireMutableBudget(
+    budgetId: string,
+    userId: string,
+    session: ClientSession,
+  ) {
+    const budget = await this.budgetModel
+      .findOne(
         {
-          _id: new Types.ObjectId(itemId),
-          budgetId: new Types.ObjectId(budgetId),
+          _id: new Types.ObjectId(budgetId),
           userId: new Types.ObjectId(userId),
           isDeleted: false,
         },
-        { $set: updates },
-        { new: true, runValidators: true },
+        { status: 1 },
+        { session },
       )
       .exec();
-
-    if (!updatedItem) {
-      throw new NotFoundException(`Budget item #${itemId} not found`);
-    }
-    return updatedItem;
+    if (!budget) throw new NotFoundException(`Budget #${budgetId} not found`);
+    if (budget.status === 'closed')
+      throw new BadRequestException(
+        'Closed budget configuration and history are read-only',
+      );
   }
   private validateRules(rules: unknown): void {
     if (rules === undefined) return;
@@ -377,7 +431,6 @@ export class BudgetsService {
     dto: Partial<CreateBudgetDto>,
     current?: Budget,
   ): Budget {
-    const now = new Date();
     const data = {
       ...(current
         ? {
@@ -410,26 +463,7 @@ export class BudgetsService {
       dto.plannedEndDate ?? dto.endDate ?? current?.plannedEndDate;
     if (planned !== undefined)
       data.endDate = data.plannedEndDate = new Date(planned);
-    if (data.status === 'closed' && current?.status !== 'closed') {
-      data.closedAt = now;
-      if (
-        dto.closeThroughDate !== undefined &&
-        dto.actualCutoffDate !== undefined
-      )
-        throw new BadRequestException(
-          'Choose an explicit cutoff or completed day, not both',
-        );
-      try {
-        data.actualCutoffDate =
-          dto.closeThroughDate !== undefined
-            ? completedDayCutoff(dto.closeThroughDate, data.timezone!)
-            : dto.actualCutoffDate === undefined
-              ? now
-              : new Date(dto.actualCutoffDate);
-      } catch (error) {
-        throw new BadRequestException((error as Error).message);
-      }
-    } else if (
+    if (
       dto.actualCutoffDate !== undefined ||
       dto.closeThroughDate !== undefined
     )
@@ -444,8 +478,6 @@ export class BudgetsService {
           data.plannedEndDate <= data.startDate)
       )
         throw new Error('Planned end must follow coverage start');
-      if (data.status === 'closed')
-        validateFinalCutoff(budgetCoverage(data), data.closedAt!, now);
     } catch (error) {
       throw new BadRequestException((error as Error).message);
     }
@@ -488,35 +520,6 @@ export class BudgetsService {
       }
     }
     if (!current) return;
-    if (data.status === 'closed' && current.status !== 'closed') {
-      const context = data.currencyContext;
-      if (!supportedBudgetCurrency(context))
-        throw new BadRequestException(
-          'Resolve budget planning currency explicitly as DOP before closing',
-        );
-      const unresolved = await this.transactionModel
-        .find(
-          {
-            userId: owner,
-            date: coverageDateFilter(budgetCoverage(data)),
-            currency: { $ne: 'DOP' },
-          },
-          { _id: 1, budgetItemId: 1, currency: 1 },
-          { session },
-        )
-        .exec();
-      if (unresolved.length)
-        throw new BadRequestException({
-          message:
-            'Currency issues block closing; explicitly correct purchase currencies. Unsupported currencies cannot be converted or relabelled as DOP',
-          currencyIssues: unresolved.map((t) => ({
-            transactionId: t._id.toString(),
-            budgetItemId: t.budgetItemId?.toString() ?? null,
-            currency: t.currency ?? null,
-            code: currencyIssue(t.currency),
-          })),
-        });
-    }
     const items = await this.budgetItemModel
       .find({ budgetId: current._id, userId: owner }, null, { session })
       .exec();
