@@ -23,6 +23,8 @@ describe('coverage route injection (real pipe, controlled transport/auth/service
   const owner = String(new Types.ObjectId());
   const id = String(new Types.ObjectId());
   const update = jest.fn().mockResolvedValue({ status: 'closed' });
+  const copyDraft = jest.fn().mockResolvedValue({ status: 'draft' });
+  const activate = jest.fn().mockResolvedValue({ status: 'active' });
   const updateTransaction = jest
     .fn<Promise<unknown>, Parameters<TransactionsService['update']>>()
     .mockResolvedValue({});
@@ -47,7 +49,7 @@ describe('coverage route injection (real pipe, controlled transport/auth/service
           provide: ClosedPeriodHistoryService,
           useValue: { listForReport: reportExceptions },
         },
-        { provide: BudgetsService, useValue: { update } },
+        { provide: BudgetsService, useValue: { update, copyDraft, activate } },
         {
           provide: TransactionsService,
           useValue: {
@@ -85,6 +87,43 @@ describe('coverage route injection (real pipe, controlled transport/auth/service
     update.mockClear();
     updateTransaction.mockClear();
     findAll.mockClear();
+    copyDraft.mockClear();
+    activate.mockClear();
+  });
+  it('BE6 TC1/TC5 use the authenticated owner and reject extra lifecycle fields', async () => {
+    const client = request(app.getHttpServer() as Server);
+    const draft = {
+      name: 'Synthetic next',
+      periodType: 'monthly',
+      timezone: 'America/La_Paz',
+      startDate: '2025-01-04T04:00:00Z',
+    };
+    await client
+      .post(`/budgets/${id}/drafts`)
+      .send({ ...draft, items: [] })
+      .expect(400);
+    await client
+      .post(`/budgets/${id}/drafts`)
+      .send({ ...draft, status: 'active' })
+      .expect(400);
+    expect(copyDraft).not.toHaveBeenCalled();
+    await client.post(`/budgets/${id}/drafts`).send(draft).expect(201);
+    expect(copyDraft).toHaveBeenCalledWith(
+      id,
+      owner,
+      expect.objectContaining(draft),
+    );
+    await client
+      .post(`/budgets/${id}/activate`)
+      .send({ startDate: null })
+      .expect(400);
+    await client
+      .post(`/budgets/${id}/activate`)
+      .send({ actualCutoffDate: draft.startDate })
+      .expect(400);
+    expect(activate).not.toHaveBeenCalled();
+    await client.post(`/budgets/${id}/activate`).send({}).expect(200);
+    expect(activate).toHaveBeenCalledWith(id, owner, {});
   });
   it('TC3 routes only explicit confirmation with a valid preview token and ISO instant', async () => {
     const url = '/budgets/' + id + '/close';

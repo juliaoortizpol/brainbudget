@@ -9,12 +9,14 @@ import {
   Delete,
   UseGuards,
   Request,
+  HttpCode,
 } from '@nestjs/common';
 import { BudgetsService } from './budgets.service';
 import { CreateBudgetDto, CreateBudgetItemDto } from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 import { UpdateBudgetItemDto } from './dto/update-budget-item.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
+import { ActivateBudgetDto, CopyBudgetDraftDto } from './dto/next-budget.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('budgets')
@@ -32,6 +34,25 @@ export class BudgetsController {
   @Get()
   findAll(@Request() req: AuthenticatedRequest) {
     return this.budgetsService.findAll(req.user.userId);
+  }
+
+  @Post(':id/drafts')
+  copyDraft(
+    @Request() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: CopyBudgetDraftDto,
+  ) {
+    return this.budgetsService.copyDraft(id, req.user.userId, dto);
+  }
+
+  @Post(':id/activate')
+  @HttpCode(200)
+  activate(
+    @Request() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: ActivateBudgetDto,
+  ) {
+    return this.budgetsService.activate(id, req.user.userId, dto);
   }
 
   @Get(':id')

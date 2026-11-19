@@ -63,6 +63,9 @@ describe('coverage lifecycle (controlled persistence)', () => {
     outside = [];
     currencyRows = [];
     connection = coverageTestConnection();
+    Object.assign(connection, {
+      model: () => ({ exists: () => ({ session: () => query(priorReport) }) }),
+    });
     written = jest.fn<
       unknown,
       [unknown, { $set: { actualCutoffDate: Date } }, unknown]
@@ -778,10 +781,12 @@ describe('coverage lifecycle (controlled persistence)', () => {
     await expect(service.create(String(owner), dto)).rejects.toThrow(
       'Only one active',
     );
+    priorReport = { _id: new Types.ObjectId() };
     others = [
       {
         ...base,
         status: 'closed',
+        closedAt: now,
         actualCutoffDate: new Date('2025-01-01T04:00:00.001Z'),
       },
     ];
@@ -789,7 +794,12 @@ describe('coverage lifecycle (controlled persistence)', () => {
       'overlaps',
     );
     others = [
-      { ...base, status: 'closed', actualCutoffDate: new Date(dto.startDate) },
+      {
+        ...base,
+        status: 'closed',
+        closedAt: now,
+        actualCutoffDate: new Date(dto.startDate),
+      },
     ];
     await expect(service.create(String(owner), dto)).resolves.toBeDefined();
   });

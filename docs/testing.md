@@ -44,6 +44,9 @@ is a separate admin step and is not claimed as active by this PR.
 
 ## QA
 
+BE6 route contracts, controlled regression coverage and the required persisted
+matrix are documented in [next-budget drafts and activation](next-budget.md).
+
 BE5 close/report and exception routes, controlled coverage and pending persisted
 verification are documented in [budget close and reports](budget-close-reports.md).
 
