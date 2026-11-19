@@ -67,6 +67,10 @@ export class CreateBudgetDto {
   periodType!: string;
 
   @IsDateString({ strict: true })
+  @Matches(/^(?:\d{4}-\d{2}-\d{2}|\S+[T ]\d[^\r\n]*(?:Z|[+-]\d{2}:?\d{2}))$/, {
+    message:
+      'startDate must be YYYY-MM-DD or an ISO timestamp with Z or a numeric UTC offset (for example -04:00)',
+  })
   @IsNotEmpty()
   startDate!: string;
 

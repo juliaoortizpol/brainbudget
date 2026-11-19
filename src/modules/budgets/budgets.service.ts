@@ -381,13 +381,15 @@ export class BudgetsService {
             'Resolve invalid draft closure fields before activation',
           );
         priorCutoff = await this.activationCutoff(userObjectId, session);
-        if (budgetData.startDate === undefined && priorCutoff)
-          budgetData.startDate = priorCutoff.toISOString();
       }
+      const attemptData = {
+        ...budgetData,
+        startDate: budgetData.startDate ?? priorCutoff?.toISOString(),
+      };
       const data =
         current.coverageVersion === 1
-          ? this.lifecycleData(budgetData, current)
-          : budgetData;
+          ? this.lifecycleData(attemptData, current)
+          : { ...budgetData };
       if (budgetData.currency === 'DOP')
         (data as Budget).currencyContext = {
           version: 1,

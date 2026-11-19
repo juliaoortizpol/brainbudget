@@ -1,7 +1,7 @@
 # AEM-BE6 next-budget drafts and activation
 
-Requirements v1 hash
-`ffcaceb85c624a90ec83ba1ce8f5b385964a5ad38b241e22b347e64221cf50d7`.
+Requirements v2 hash
+`186001d9471df1aa8bc6798fb90c992507abea1f0ea78d3caaa06417ae3771b0`.
 All endpoints below require the ordinary owner JWT. Successful budget responses
 use the existing unwrapped budget object with `items`, DOP context, and budget
 and item actuals metadata. Dates serialize as ISO instants.
@@ -12,8 +12,13 @@ and item actuals metadata. Dates serialize as ISO instants.
 | POST /budgets | Same planning fields plus `status: "draft"`. Omit `items` or pass an empty array for an empty draft. | 201 with the editable draft. |
 | POST /budgets/:draftId/activate | Send `{}` for the default, or `{"startDate":"2025-02-03T04:00:00Z"}` to choose an explicit coverage start. | 200 with the active budget, effective start and existing item IDs. |
 
-`periodType` accepts monthly, weekly or custom. Use a valid saved timezone and
-send ISO timestamps with offsets. Existing BE3 date-only compatibility remains.
+`periodType` accepts monthly, weekly or custom. Supply a valid budget timezone.
+For `startDate`, create, copy, PATCH (including status changes) and dedicated
+activation accept the existing `YYYY-MM-DD` format. If you include a time, send
+an ISO timestamp with `Z` or a numeric UTC offset, such as
+`2025-02-03T04:00:00Z` or the equivalent `2025-02-03T00:00:00-04:00`.
+An offsetless timestamp returns 400 with a `startDate` validation message.
+Add the intended offset or submit a date-only value and retry.
 Draft creation needs a provisional start even while the prior cutoff is unknown.
 The two planned-end fields must agree when both are sent. The planned end must
 follow the effective start, including when activation defaults to a later cutoff.
@@ -65,7 +70,10 @@ alone does not establish the latest prior budget's final report.
 Activation retries on the dedicated endpoint are safe while the same budget
 remains active. Omit the start or pass its committed start to return the active
 record without reapplying a write to the budget or items. Closed targets stay
-immutable. Concurrent activation contends on the shared per-owner Mongo lock
+immutable. Each transaction attempt derives an omitted start from the confirmed
+cutoff visible to that attempt. If a competing request activated the same draft
+between attempts, an omitted start returns the committed active budget.
+Concurrent activation contends on the shared per-owner Mongo lock
 and retains the unique active-budget index. Draft creation and all item inserts
 commit together. No standalone Mongo fallback is supported.
 

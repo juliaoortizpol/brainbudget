@@ -13,6 +13,7 @@ import { BudgetReportsService } from '../reports/budget-reports.service';
 import { ClosedPeriodHistoryService } from '../reports/closed-period-history.service';
 import { BudgetsController } from './budgets.controller';
 import { BudgetsService } from './budgets.service';
+import { CreateBudgetDto } from './dto/create-budget.dto';
 import { TransactionsController } from '../transactions/transactions.controller';
 import { TransactionsService } from '../transactions/transactions.service';
 import { AuthenticatedRequest } from '../../common/types/authenticated-request';
@@ -22,9 +23,18 @@ describe('coverage route injection (real pipe, controlled transport/auth/service
   let app: INestApplication;
   const owner = String(new Types.ObjectId());
   const id = String(new Types.ObjectId());
-  const update = jest.fn().mockResolvedValue({ status: 'closed' });
-  const copyDraft = jest.fn().mockResolvedValue({ status: 'draft' });
-  const activate = jest.fn().mockResolvedValue({ status: 'active' });
+  const create = jest
+    .fn<Promise<unknown>, unknown[]>()
+    .mockResolvedValue({ status: 'draft' });
+  const update = jest
+    .fn<Promise<unknown>, unknown[]>()
+    .mockResolvedValue({ status: 'closed' });
+  const copyDraft = jest
+    .fn<Promise<unknown>, unknown[]>()
+    .mockResolvedValue({ status: 'draft' });
+  const activate = jest
+    .fn<Promise<unknown>, unknown[]>()
+    .mockResolvedValue({ status: 'active' });
   const updateTransaction = jest
     .fn<Promise<unknown>, Parameters<TransactionsService['update']>>()
     .mockResolvedValue({});
@@ -36,6 +46,11 @@ describe('coverage route injection (real pipe, controlled transport/auth/service
   const transactionExceptions = jest
     .fn()
     .mockResolvedValue({ data: [], page: 1, limit: 20, total: 0 });
+  const pipe = new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+  });
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [
@@ -49,7 +64,10 @@ describe('coverage route injection (real pipe, controlled transport/auth/service
           provide: ClosedPeriodHistoryService,
           useValue: { listForReport: reportExceptions },
         },
-        { provide: BudgetsService, useValue: { update, copyDraft, activate } },
+        {
+          provide: BudgetsService,
+          useValue: { create, update, copyDraft, activate },
+        },
         {
           provide: TransactionsService,
           useValue: {
@@ -71,24 +89,94 @@ describe('coverage route injection (real pipe, controlled transport/auth/service
       })
       .compile();
     app = module.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        transform: true,
-        forbidNonWhitelisted: true,
-      }),
-    );
+    app.useGlobalPipes(pipe);
     await app.init();
   });
   afterAll(async () => {
     await app.close();
   });
   beforeEach(() => {
+    create.mockClear();
     update.mockClear();
     updateTransaction.mockClear();
     findAll.mockClear();
     copyDraft.mockClear();
     activate.mockClear();
+  });
+  it('TC5 enforces zoned start timestamps on all budget routes and preserves date-only input', async () => {
+    const client = request(app.getHttpServer() as Server);
+    const plan = {
+      name: 'Synthetic next',
+      periodType: 'monthly',
+      timezone: 'America/La_Paz',
+    };
+    await expect(
+      pipe.transform(
+        { ...plan, status: 'draft', startDate: '2025-02-03T04:00:00' },
+        { type: 'body', metatype: CreateBudgetDto },
+      ),
+    ).rejects.toMatchObject({
+      response: {
+        message: [
+          'startDate must be YYYY-MM-DD or an ISO timestamp with Z or a numeric UTC offset (for example -04:00)',
+        ],
+      },
+    });
+    const routes = [
+      {
+        send: () => client.post('/budgets'),
+        fields: { ...plan, status: 'draft' },
+        handler: create,
+        status: 201,
+      },
+      {
+        send: () => client.post(`/budgets/${id}/drafts`),
+        fields: plan,
+        handler: copyDraft,
+        status: 201,
+      },
+      {
+        send: () => client.patch(`/budgets/${id}`),
+        fields: {},
+        handler: update,
+        status: 200,
+      },
+      {
+        send: () => client.patch(`/budgets/${id}`),
+        fields: { status: 'active' },
+        handler: update,
+        status: 200,
+      },
+      {
+        send: () => client.post(`/budgets/${id}/activate`),
+        fields: {},
+        handler: activate,
+        status: 200,
+      },
+    ];
+    for (const { send, fields, handler, status } of routes) {
+      handler.mockClear();
+      for (const startDate of [
+        '2025-02-03T04:00:00',
+        '2025-02-03T04:00',
+        '2025-02-03 04:00:00',
+      ]) {
+        await send()
+          .send({ ...fields, startDate })
+          .expect(400);
+      }
+      expect(handler).not.toHaveBeenCalled();
+      for (const startDate of [
+        '2025-02-03',
+        '2025-02-03T04:00:00Z',
+        '2025-02-03T00:00:00-04:00',
+        '2025-02-03T09:30:00+0530',
+      ]) {
+        const body = { ...fields, startDate };
+        await send().send(body).expect(status);
+        expect(handler.mock.lastCall?.at(-1)).toEqual(body);
+      }
+    }
   });
   it('BE6 TC1/TC5 use the authenticated owner and reject extra lifecycle fields', async () => {
     const client = request(app.getHttpServer() as Server);

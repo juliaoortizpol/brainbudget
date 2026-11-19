@@ -265,7 +265,7 @@ describe('BE6 next budget with controlled persistence', () => {
     });
     await f.service.activate(String(draftId), String(owner), {});
     await f.service.activate(String(draftId), String(owner), {
-      startDate: cutoff.toISOString(),
+      startDate: '2025-02-03T00:00:00-04:00',
     });
     await expect(
       f.service.activate(String(draftId), String(owner), {
@@ -274,6 +274,66 @@ describe('BE6 next budget with controlled persistence', () => {
     ).rejects.toMatchObject({ status: 409 });
     expect(f.update).toHaveBeenCalledTimes(1);
   });
+
+  it('TC9 replays an omitted start after a competing explicit same-draft activation', async () => {
+    const f = fixture();
+    const winningStart = new Date('2025-02-04T04:00:00Z');
+    const aborted = new Error('controlled transaction abort');
+    f.update.mockImplementationOnce(() => ({
+      ...query({ matchedCount: 0 }),
+      exec: () => Promise.reject(aborted),
+    }));
+    f.connection.session.withTransaction.mockImplementationOnce(
+      async (work) => {
+        await expect(work()).rejects.toBe(aborted);
+        await f.service.activate(String(draftId), String(owner), {
+          startDate: winningStart.toISOString(),
+        });
+        return work();
+      },
+    );
+
+    const dto = Object.freeze({});
+    await f.service.activate(String(draftId), String(owner), dto);
+    expect(f.current.startDate).toEqual(winningStart);
+    expect(f.update).toHaveBeenCalledTimes(2);
+    await f.service.activate(String(draftId), String(owner), dto);
+    expect(f.update).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([undefined, '2025-02-04T01:00:00-04:00'])(
+    'TC5/TC9 rechecks the confirmed cutoff on replay with requested start %s',
+    async (startDate) => {
+      const f = fixture();
+      const laterCutoff = new Date('2025-02-04T04:00:00Z');
+      const aborted = new Error('controlled transaction abort');
+      f.update.mockImplementationOnce(() => ({
+        ...query({ matchedCount: 0 }),
+        exec: () => Promise.reject(aborted),
+      }));
+      f.connection.session.withTransaction.mockImplementationOnce(
+        async (work) => {
+          await expect(work()).rejects.toBe(aborted);
+          f.state.retained[0].actualCutoffDate = laterCutoff;
+          return work();
+        },
+      );
+
+      await f.service.activate(String(draftId), String(owner), { startDate });
+      expect(f.report).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ actualCutoffDate: cutoff }),
+      );
+      expect(f.report).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ actualCutoffDate: laterCutoff }),
+      );
+      expect(f.update).toHaveBeenCalledTimes(2);
+      expect(f.current.startDate).toEqual(
+        startDate ? new Date(startDate) : laterCutoff,
+      );
+    },
+  );
 
   it('TC5 blocks absent confirmation and invalid retained lifecycle on create and status PATCH', async () => {
     const f = fixture();
