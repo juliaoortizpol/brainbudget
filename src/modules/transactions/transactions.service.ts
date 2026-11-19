@@ -31,18 +31,17 @@ import {
 } from '../budgets/schemas/budget-item.schema';
 
 function correctedPurchaseCurrency(
-  current: string | undefined,
+  current: string | null | undefined,
   requested: string | undefined,
-): string | undefined {
-  if (
-    requested !== undefined &&
-    requested !== current &&
-    currencyIssue(current) !== 'unknown_currency'
-  ) {
+): string | null | undefined {
+  // Eligibility can be unknown even when the original denomination is recorded.
+  const missing =
+    current == null || (typeof current === 'string' && current.trim() === '');
+  if (requested !== undefined && requested !== current && !missing) {
     throw new ConflictException({
       code: 'purchase_currency_locked',
       message:
-        'Keep the recorded purchase currency. Only unknown currency can be resolved.',
+        'Keep the recorded purchase currency. Provide a verified currency only when the original value is absent or blank.',
     });
   }
   return requested ?? current;

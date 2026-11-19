@@ -33,15 +33,19 @@ reads use saved data, including rule field, operator, value and source.
 Use `blockers` to guide the owner. `resolve_budget_lifecycle` and
 `resolve_other_budget_lifecycle` require explicit legacy lifecycle resolution.
 `conflicting_budget_coverage` requires resolving overlapping coverage.
-`resolve_planning_currency` requires explicit DOP planning. Unknown purchase
-currency must be verified explicitly and genuine unsupported currency prevents
-closure. `unassigned`, `invalid_assignment`, `assignment_type_conflict` and
-`assignment_outside_cutoff` require reviewing the owned transaction or cutoff.
+`resolve_planning_currency` requires explicit DOP planning. Only exact `DOP`
+purchase currency qualifies for closing. `unassigned`, `invalid_assignment`,
+`assignment_type_conflict` and `assignment_outside_cutoff` require reviewing the
+owned transaction or cutoff.
 PATCH /transactions/:id returns HTTP 409 `purchase_currency_locked` if a request
-would replace a known purchase currency. The entire edit is rejected. A fresh
-preview still exposes the unsupported purchase, and confirmation remains
-blocked. Resubmitting the same currency preserves its evidence. An owner can
-resolve unknown currency explicitly and then preview and confirm again.
+would replace recorded purchase currency. This includes nonblank legacy values
+classified as `unknown_currency` for eligibility, such as `USD ` or `dop`.
+The entire edit is rejected, including assignment and merchant learning.
+A fresh preview exposes the original currency and confirmation remains blocked
+for an in-scope purchase without exact DOP. Resubmitting the same DTO-valid
+currency preserves its evidence. An owner can explicitly provide a verified
+currency for an absent, null or whitespace-only value, then preview and confirm
+again once all blockers are resolved.
 Amount/type errors indicate invalid stored figures and require correction.
 The error payload identifies affected owned rows and excludes raw purchase
 descriptions and account metadata.
@@ -107,7 +111,9 @@ write failure aborts both operations. Imports report such failures as
 
 Controlled tests exercise cutoff, reconciliation, stale review, owner scope,
 lock and session ordering, late imports and manual arrivals, duplicate import
-handling, correction evidence and error handling. The persisted synthetic
-HTTP/Mongo matrix still needs real transaction rollback, concurrent writes,
+handling, correction evidence and error handling. TC2/TC6 also run a DTO-valid
+currency and assignment update through fresh preview and confirmation for
+recorded variants, missing/blank values and exact DOP resubmission. The persisted
+synthetic HTTP/Mongo matrix still needs real transaction rollback, concurrent writes,
 unique-index enforcement and retained IDs. A report is one Mongo document, so
 an oversized report fails atomically at MongoDB's BSON document limit.

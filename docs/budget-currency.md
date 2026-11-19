@@ -72,13 +72,16 @@ acknowledgement once; an already contextualized closed budget rejects currency
 edits with `Closed budget currency context cannot be changed`. This changes no
 coverage boundaries and does not resolve missing legacy lifecycle decisions.
 
-PATCH /transactions/:id can resolve unknown currency with the verified purchase
-`currency`, recording version 1 and `explicit-resolution`. An unknown purchase may
-be resolved to DOP and assigned in one atomic request. If verification identifies
+PATCH /transactions/:id can fill a missing, null or blank currency with the
+verified purchase `currency`, recording version 1 and `explicit-resolution`. A
+purchase with missing or blank currency may be resolved to DOP and assigned in
+one atomic request. If verification identifies
 USD, save USD and keep the purchase for review. The request may clear an old
-assignment at the same time. Once a purchase has a known currency, PATCH with a
-different currency returns HTTP 409 `purchase_currency_locked` and rejects the
-entire request, including assignment and merchant learning. Sending the same
+assignment at the same time. Once a purchase has any nonblank recorded value,
+PATCH with a different currency returns HTTP 409 `purchase_currency_locked` and rejects the
+entire request, including assignment and merchant learning. Nonblank values
+classified as `unknown_currency` for eligibility retain their original case,
+whitespace and provenance. Sending the same DTO-valid
 currency preserves its stored origin and version, including absent legacy
 metadata. Any assignment included with that request still runs ordinary checks.
 An ordinary account edit never changes purchase or report currency evidence.

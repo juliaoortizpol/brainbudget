@@ -9,6 +9,7 @@ import { MerchantNormalizationService } from '../transactions/merchant-normaliza
 import { BudgetMatchingContext } from './budget-matching-context.service';
 import { ClosePreviewDto, ConfirmCloseDto } from '../reports/close-budget.dto';
 import { TransactionsService } from '../transactions/transactions.service';
+import { UpdateTransactionDto } from '../transactions/dto/update-transaction.dto';
 import { TransactionMailPersistenceService } from '../transaction-mail-import/transaction-mail-persistence.service';
 import { BudgetReportsService } from '../reports/budget-reports.service';
 import { BudgetPeriodReportSchema } from '../reports/schemas/budget-period-report.schema';
@@ -131,18 +132,24 @@ describe('coverage lifecycle (controlled persistence)', () => {
 
   it.each([
     { original: 'USD', origin: 'mail-parser', requested: 'DOP', blocked: true },
+    ...['USD ', 'usd', ' DOP ', 'RD$'].map((original) => ({
+      original,
+      origin: 'mail-parser',
+      requested: 'DOP',
+      blocked: true,
+    })),
     {
       original: 'DOP',
       origin: 'mail-parser',
       requested: 'DOP',
       blocked: false,
     },
-    {
-      original: undefined,
+    ...[undefined, null, '', ' \t '].map((original) => ({
+      original,
       origin: undefined,
       requested: 'DOP',
       blocked: false,
-    },
+    })),
   ])(
     'TC2/TC6 preserves currency evidence when updating $original to $requested and assigning an item',
     async ({ original, origin, requested, blocked }) => {
@@ -182,17 +189,23 @@ describe('coverage lifecycle (controlled persistence)', () => {
           record,
         } as never,
       );
+      const pipe = new ValidationPipe({
+        transform: true,
+        whitelist: true,
+        forbidNonWhitelisted: true,
+      });
       const before = await reports.preview(String(id), String(owner), {});
       const mutation = transactions.update(
         String(transactionId),
         String(owner),
-        {
-          currency: requested,
-          budgetItemId: String(itemId),
-        },
+        (await pipe.transform(
+          { currency: requested, budgetItemId: String(itemId) },
+          { type: 'body', metatype: UpdateTransactionDto },
+        )) as UpdateTransactionDto,
       );
       if (blocked) {
         await expect(mutation).rejects.toMatchObject({
+          status: 409,
           response: { code: 'purchase_currency_locked' },
         });
         expect(write).not.toHaveBeenCalled();
@@ -200,6 +213,7 @@ describe('coverage lifecycle (controlled persistence)', () => {
         expect(outside[0]).toMatchObject({
           currency: original,
           currencyOrigin: origin,
+          currencyContextVersion: 1,
           amount: 20,
         });
         expect(outside[0]).not.toHaveProperty('budgetItemId');
@@ -212,20 +226,39 @@ describe('coverage lifecycle (controlled persistence)', () => {
       }
       const fresh = await reports.preview(String(id), String(owner), {});
       expect(fresh.includedTransactionIds).toEqual([String(transactionId)]);
-      const confirm = (previewToken: string) =>
-        reports.confirm(String(id), String(owner), {
-          confirmed: true,
-          previewToken,
-          actualCutoffDate: now.toISOString(),
-        });
+      const confirm = async (previewToken: string) =>
+        reports.confirm(
+          String(id),
+          String(owner),
+          (await pipe.transform(
+            {
+              confirmed: true,
+              previewToken,
+              actualCutoffDate: now.toISOString(),
+            },
+            { type: 'body', metatype: ConfirmCloseDto },
+          )) as ConfirmCloseDto,
+        );
       if (blocked) {
-        expect(fresh.blockers.map(({ code }) => code)).toEqual([
-          'unsupported_currency',
-          'unassigned',
+        expect(fresh.blockers).toEqual([
+          {
+            code:
+              original === 'USD' ? 'unsupported_currency' : 'unknown_currency',
+            transactionId: String(transactionId),
+            budgetItemId: null,
+            currency: original,
+          },
+          {
+            code: 'unassigned',
+            transactionId: String(transactionId),
+            budgetItemId: null,
+          },
         ]);
+        expect(fresh.totals.totalActualExpense).toBe(0);
         expect(fresh.previewToken).toBe(before.previewToken);
         await expect(confirm(fresh.previewToken)).rejects.toMatchObject({
-          response: { code: 'close_blocked' },
+          status: 400,
+          response: { code: 'close_blocked', blockers: fresh.blockers },
         });
         expect(saved).not.toHaveBeenCalled();
         expect(written).not.toHaveBeenCalled();
