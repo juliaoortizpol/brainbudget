@@ -119,8 +119,9 @@ as a plan; new creates need timezone. Supplied FE4 eligibleCategories uses <=end
 and hides December choices. FE2 must adopt start<=purchase and (no actualCutoffDate
 or purchase<actualCutoffDate), active status, explicit timezone and separate optional
 planning/extended-period display. No frontend change is included. BE5 consumes final
-cutoff/closedAt for its [immutable reports](budget-close-reports.md). BE6 may
-start an adjacent budget at cutoff; copying/rollover is outside this ticket.
+cutoff/closedAt for its [immutable reports](budget-close-reports.md). See
+[BE6 next-budget drafts and activation](next-budget.md) for copying planning
+configuration and starting the next period at the confirmed cutoff.
 
 Local regressions use synthetic controlled persistence. coverage-routes.spec.ts
 uses real Nest routes/bootstrap-equivalent ValidationPipe with controlled auth and
