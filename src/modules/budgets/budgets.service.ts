@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { createHash } from 'node:crypto';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { ClientSession, Model, Types } from 'mongoose';
@@ -22,7 +23,11 @@ import {
   Transaction,
   TransactionDocument,
 } from '@/modules/transactions/schemas/transaction.schema';
-import { CreateBudgetDto, CreateBudgetItemDto } from './dto/create-budget.dto';
+import {
+  CreateBudgetDto,
+  CreateBudgetItemDto,
+  CreateBudgetRequestDto,
+} from './dto/create-budget.dto';
 import { UpdateBudgetItemDto } from './dto/update-budget-item.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 import { ActivateBudgetDto, CopyBudgetDraftDto } from './dto/next-budget.dto';
@@ -63,17 +68,24 @@ export class BudgetsService {
 
   async create(
     userId: string,
-    createBudgetDto: CreateBudgetDto,
+    createBudgetDto: CreateBudgetRequestDto,
   ): Promise<BudgetWithItems> {
-    const { items, ...budgetData } = createBudgetDto;
+    const { items, operationKey, ...budgetData } = createBudgetDto;
     this.validateItems(items);
 
     const data = this.lifecycleData(budgetData);
+    if (
+      operationKey !== undefined &&
+      (data.status !== 'draft' || items?.length)
+    )
+      throw new BadRequestException(
+        'operationKey is supported only when creating an empty draft on this route',
+      );
     if (data.status === 'closed')
       throw new BadRequestException(
         'Create a draft or active budget before closing',
       );
-    return this.createWithItems(userId, data, () => items);
+    return this.createWithItems(userId, data, () => items, operationKey);
   }
 
   async copyDraft(
@@ -82,67 +94,79 @@ export class BudgetsService {
     dto: CopyBudgetDraftDto,
   ): Promise<BudgetWithItems> {
     this.requireBudgetId(sourceId);
-    const data = this.lifecycleData({ ...dto, status: 'draft' });
-    return this.createWithItems(userId, data, async (session) => {
-      const source = await this.budgetModel
-        .findOne(
-          {
-            _id: new Types.ObjectId(sourceId),
-            userId: new Types.ObjectId(userId),
-            isDeleted: false,
-            deletedAt: null,
-          },
-          null,
-          { session },
-        )
-        .exec();
-      if (!source) throw new NotFoundException('Source budget not found');
-      if (source.status !== 'active' && source.status !== 'closed')
-        throw new BadRequestException('Copy an active or closed budget');
-      if (!supportedBudgetCurrency(source.currencyContext))
-        throw new BadRequestException(
-          'Resolve source budget planning currency explicitly as DOP before copying',
-        );
+    const { operationKey, ...plan } = dto;
+    const data = this.lifecycleData({ ...plan, status: 'draft' });
+    return this.createWithItems(
+      userId,
+      data,
+      (session) => this.loadDraftSourceItems(sourceId, userId, session),
+      operationKey,
+      new Types.ObjectId(sourceId).toHexString(),
+    );
+  }
 
-      const retained = await this.budgetItemModel
-        .find(
-          {
-            budgetId: source._id,
-            userId: source.userId,
-            isDeleted: false,
-            deletedAt: null,
-          },
-          {
-            name: 1,
-            description: 1,
-            type: 1,
-            plannedAmount: 1,
-            icon: 1,
-            color: 1,
-            alertEnabled: 1,
-            matchingRules: 1,
-          },
-          { session },
-        )
-        .lean()
-        .exec();
-      return retained.map(({ _id, ...configuration }) => {
-        const ruleError =
-          configuration.matchingRules === undefined
-            ? undefined
-            : matchingRulesError(configuration.matchingRules);
-        if (
-          ruleError ||
-          validateSync(plainToInstance(CreateBudgetItemDto, configuration))
-            .length
-        )
-          throw new BadRequestException({
-            code: 'invalid_source_item',
-            message: ruleError ?? 'Source item configuration is invalid',
-            itemId: _id.toString(),
-          });
-        return configuration;
-      });
+  private async loadDraftSourceItems(
+    sourceId: string,
+    userId: string,
+    session: ClientSession,
+  ): Promise<CreateBudgetItemDto[]> {
+    const source = await this.budgetModel
+      .findOne(
+        {
+          _id: new Types.ObjectId(sourceId),
+          userId: new Types.ObjectId(userId),
+          isDeleted: false,
+          deletedAt: null,
+        },
+        null,
+        { session },
+      )
+      .exec();
+    if (!source) throw new NotFoundException('Source budget not found');
+    if (source.status !== 'active' && source.status !== 'closed')
+      throw new BadRequestException('Copy an active or closed budget');
+    if (!supportedBudgetCurrency(source.currencyContext))
+      throw new BadRequestException(
+        'Resolve source budget planning currency explicitly as DOP before copying',
+      );
+
+    const retained = await this.budgetItemModel
+      .find(
+        {
+          budgetId: source._id,
+          userId: source.userId,
+          isDeleted: false,
+          deletedAt: null,
+        },
+        {
+          name: 1,
+          description: 1,
+          type: 1,
+          plannedAmount: 1,
+          icon: 1,
+          color: 1,
+          alertEnabled: 1,
+          matchingRules: 1,
+        },
+        { session },
+      )
+      .lean()
+      .exec();
+    return retained.map(({ _id, ...configuration }) => {
+      const ruleError =
+        configuration.matchingRules === undefined
+          ? undefined
+          : matchingRulesError(configuration.matchingRules);
+      if (
+        ruleError ||
+        validateSync(plainToInstance(CreateBudgetItemDto, configuration)).length
+      )
+        throw new BadRequestException({
+          code: 'invalid_source_item',
+          message: ruleError ?? 'Source item configuration is invalid',
+          itemId: _id.toString(),
+        });
+      return configuration;
     });
   }
 
@@ -152,12 +176,58 @@ export class BudgetsService {
     loadItems: (
       session: ClientSession,
     ) => CreateBudgetItemDto[] | undefined | Promise<CreateBudgetItemDto[]>,
+    operationKey?: string,
+    sourceId?: string,
   ): Promise<BudgetWithItems> {
     const userObjectId = new Types.ObjectId(userId);
+    const operation =
+      operationKey === undefined
+        ? undefined
+        : {
+            draftOperationKey: operationKey,
+            draftOperationFingerprint: createHash('sha256')
+              .update(
+                JSON.stringify([
+                  'draft-v1',
+                  sourceId ?? null,
+                  data.name,
+                  data.periodType,
+                  data.startDate.toISOString(),
+                  data.plannedEndDate?.toISOString() ?? null,
+                  data.timezone,
+                  data.currencyContext?.currency,
+                ]),
+              )
+              .digest('hex'),
+          };
     const id = await coverageWrite(
       this.budgetModel.db,
       userId,
       async (session) => {
+        if (operation) {
+          const existing = await this.budgetModel
+            .findOne(
+              {
+                userId: userObjectId,
+                draftOperationKey: operation.draftOperationKey,
+              },
+              '_id +draftOperationFingerprint',
+              { session },
+            )
+            .exec();
+          if (existing) {
+            if (
+              existing.draftOperationFingerprint !==
+              operation.draftOperationFingerprint
+            )
+              throw new ConflictException({
+                code: 'draft_operation_conflict',
+                message:
+                  'This operation key was already used for a different draft request. Retry the original request or use a new key for a separate draft.',
+              });
+            return existing._id.toString();
+          }
+        }
         if (data.status === 'active') {
           const cutoff = await this.activationCutoff(userObjectId, session);
           this.validateActivationStart(data.startDate, cutoff);
@@ -165,6 +235,7 @@ export class BudgetsService {
         const items = await loadItems(session);
         const saved = await new this.budgetModel({
           ...data,
+          ...operation,
           userId: userObjectId,
         }).save({ session });
         if (items?.length)

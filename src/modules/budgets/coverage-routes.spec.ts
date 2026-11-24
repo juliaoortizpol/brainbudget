@@ -213,6 +213,52 @@ describe('coverage route injection (real pipe, controlled transport/auth/service
     await client.post(`/budgets/${id}/activate`).send({}).expect(200);
     expect(activate).toHaveBeenCalledWith(id, owner, {});
   });
+  it('FE5 TC12 validates operationKey on both creation routes and rejects it on edits', async () => {
+    const client = request(app.getHttpServer() as Server);
+    const plan = {
+      name: 'Synthetic next',
+      periodType: 'monthly',
+      timezone: 'America/La_Paz',
+      startDate: '2025-01-04',
+    };
+    for (const [url, body] of [
+      ['/budgets', { ...plan, status: 'draft' }],
+      [`/budgets/${id}/drafts`, plan],
+    ] as const) {
+      for (const operationKey of [
+        null,
+        '',
+        123,
+        'white space',
+        'x'.repeat(129),
+      ]) {
+        await client
+          .post(url)
+          .send({ ...body, operationKey })
+          .expect(400);
+      }
+    }
+    expect(create).not.toHaveBeenCalled();
+    expect(copyDraft).not.toHaveBeenCalled();
+
+    const keyedPlan = { ...plan, operationKey: 'synthetic-key_01' };
+    const empty = { ...keyedPlan, status: 'draft' };
+    await client.post('/budgets').send(empty).expect(201);
+    expect(create).toHaveBeenCalledWith(owner, empty);
+    await client.post(`/budgets/${id}/drafts`).send(keyedPlan).expect(201);
+    expect(copyDraft).toHaveBeenCalledWith(id, owner, keyedPlan);
+    await client
+      .patch(`/budgets/${id}`)
+      .send({ operationKey: keyedPlan.operationKey })
+      .expect(400);
+    await client
+      .post(`/budgets/${id}/activate`)
+      .send({ operationKey: keyedPlan.operationKey })
+      .expect(400);
+    expect(update).not.toHaveBeenCalled();
+    expect(activate).not.toHaveBeenCalled();
+  });
+
   it('TC3 routes only explicit confirmation with a valid preview token and ISO instant', async () => {
     const url = '/budgets/' + id + '/close';
     const payload = {

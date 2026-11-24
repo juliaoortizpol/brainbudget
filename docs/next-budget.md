@@ -38,6 +38,40 @@ resolve the source separately with its existing currency-only PATCH. Supply new
 dates and timezone explicitly. Copy leaves legacy source dates and currency as
 stored and does not read report snapshots as item templates.
 
+## Safe draft creation retries (AEM-FE5 v2)
+
+Send an optional JSON body field `operationKey` to either draft creation route.
+Use a fresh key per deliberate creation (for example a UUID) and send the same
+key with the same request after a transport failure or an uncertain response.
+Keys are case-sensitive and accept 1–128 ASCII letters, digits, hyphens or
+underscores. On `POST /budgets`, keyed requests require `status: "draft"` and
+empty items. A key is invalid on activation and edit routes. Requests without
+a key keep their existing behavior, including creating a new budget on each
+successful POST.
+
+An authenticated owner's key binds to the creation route, copy source ID if
+applicable, and the validated plan. Equivalent date instants and planned-end
+aliases, omitted vs. explicit DOP, and omitted vs. empty items are equivalent.
+The name, period type and timezone must match. A different valid request with
+the same owner/key returns HTTP 409 with code `draft_operation_conflict`.
+Retry the original request or use a new key for a separate draft. A different
+owner can use the same key and still needs their own accessible copy source.
+
+The budget stores an internal key and versioned request fingerprint with its
+existing ID. The partial unique index `one_draft_creation_operation_per_owner`
+enforces owner/key uniqueness for keyed records. Budget and item writes are
+atomic under the existing owner lock and Mongo transaction. A rolled-back
+attempt consumes no key. Existing records require no backfill.
+
+A matching replay returns HTTP 201 with the existing owned budget and its
+current visible items using the normal resource response. It retains the
+original IDs of the budget and any retained copied items, even after edits
+or activation, and never reads the source again or restores removed items.
+If the created draft was soft-deleted, a matching replay returns 404. The key
+stays reserved to prevent recreation. After a 5xx or transport error, retry the
+original keyed POST. After a successful response, retry any failed refresh as
+a read.
+
 ## Activation and errors
 
 Finish the prior active budget with BE5 close preview and explicit confirmation.
@@ -70,9 +104,9 @@ alone does not establish the latest prior budget's final report.
 - **404** covers missing, foreign, soft-deleted and malformed source/target IDs.
 - **409** means an active budget must be closed first or a repeated activation
   requested a different start. Close via BE5 or reload the budget as applicable.
-- **503** means the transactional write could not be confirmed. Reload the owned
-  budget list and check current state before retrying. A copy request creates a
-  new draft per successful submission, so reconcile before resending it.
+- **503** means the transactional write could not be confirmed. Retry a keyed
+  draft creation with the original key and request. For unkeyed creates, reload
+  the owned budget list and reconcile before resending the request.
 
 Activation retries over either existing-budget route are safe while the same
 budget remains active. Omit the start or pass an equivalent instant to return
@@ -114,3 +148,9 @@ Real authenticated HTTP/Mongo verification must use only
 post-native-write faults, concurrent activation, retained history and
 import/assignment, followed by fixture and service teardown. Product screenshots
 are inapplicable. Independent QA supplies portable HTML with API evidence.
+
+AEM-FE5 TC12 adds controlled route and service regressions for key validation,
+overlapping and later replay, failed reads after commit, owner/source/route
+conflicts, retained identities, soft-deleted targets and rollback. Real
+authenticated HTTP/Mongo coverage, including native rollback and response loss
+on both creation routes, remains part of the synthetic TC12/TC13 matrix.

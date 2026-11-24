@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { model, Types } from 'mongoose';
 import { coverageTestConnection } from '../../../test/coverage-test-support';
 import { BudgetsService } from './budgets.service';
@@ -86,7 +87,7 @@ describe('BE6 next budget with controlled persistence', () => {
       query<{ _id: Types.ObjectId } | null>({ _id: new Types.ObjectId() }),
     );
     const state = {
-      source: { ...prior },
+      source: { ...prior, isDeleted: false },
       retained: [{ ...prior }],
       sourceItems: [{ _id: itemId, ...configuration }],
     };
@@ -106,17 +107,22 @@ describe('BE6 next budget with controlled persistence', () => {
       Promise<InstanceType<typeof Budget>>,
       [InstanceType<typeof Budget>, unknown]
     >((budget) => Promise.resolve(budget));
-    const loadBudget = (filter: { _id: Types.ObjectId }) =>
-      query(
-        filter._id.equals(draftId)
-          ? current
-          : filter._id.equals(sourceId)
-            ? state.source
-            : null,
+    type BudgetFilter =
+      | { _id: Types.ObjectId; userId?: Types.ObjectId }
+      | { userId: Types.ObjectId; draftOperationKey: string };
+    const loadBudget = (filter: BudgetFilter) =>
+      query<typeof state.source | InstanceType<typeof Budget> | null>(
+        !('_id' in filter)
+          ? null
+          : filter._id.equals(draftId)
+            ? current
+            : filter._id.equals(sourceId)
+              ? state.source
+              : null,
       );
     const findOne = jest.fn<
       ReturnType<typeof loadBudget>,
-      [{ _id: Types.ObjectId }, unknown, unknown]
+      [BudgetFilter, unknown, unknown]
     >(loadBudget);
     const loadItems = () => query(state.sourceItems);
     const findItems = jest.fn<
@@ -155,7 +161,9 @@ describe('BE6 next budget with controlled persistence', () => {
       Items as never,
       transactions as never,
     );
-    jest.spyOn(service, 'findOne').mockResolvedValue({} as never);
+    const readBudget = jest
+      .spyOn(service, 'findOne')
+      .mockResolvedValue({} as never);
     return {
       service,
       state,
@@ -169,8 +177,217 @@ describe('BE6 next budget with controlled persistence', () => {
       update,
       current,
       transactions,
+      readBudget,
     };
   }
+
+  // Serialize transaction callbacks as the owner lock would and discard staged
+  // writes on abort. Mongo isolation and index enforcement need a real service.
+  function draftPersistence() {
+    const f = fixture();
+    let budgets: InstanceType<typeof Budget>[] = [];
+    let items: InstanceType<typeof Item>[] = [];
+    let pending = Promise.resolve();
+    let abort = false;
+    f.connection.session.withTransaction.mockImplementation((work) => {
+      const transaction = pending.then(async () => {
+        const previousBudgets = budgets.slice();
+        const previousItems = items.slice();
+        try {
+          const result = await work();
+          if (abort) {
+            abort = false;
+            throw new Error('Controlled abort after staged writes');
+          }
+          return result;
+        } catch (error) {
+          budgets = previousBudgets;
+          items = previousItems;
+          throw error;
+        }
+      });
+      pending = transaction.then(
+        () => undefined,
+        () => undefined,
+      );
+      return transaction;
+    });
+    f.findOne.mockImplementation((filter) => {
+      if ('_id' in filter)
+        return query(
+          filter._id.equals(sourceId) &&
+            owner.equals(filter.userId) &&
+            !f.state.source.isDeleted
+            ? f.state.source
+            : null,
+        );
+      return query(
+        budgets.find(
+          (budget) =>
+            budget.userId.equals(filter.userId) &&
+            budget.draftOperationKey === filter.draftOperationKey,
+        ) ?? null,
+      );
+    });
+    f.save.mockImplementation((budget) => {
+      budgets.push(budget);
+      return Promise.resolve(budget);
+    });
+    f.insert.mockImplementation((rows) => {
+      const copied = rows.map((row) => new Item(row));
+      items.push(...copied);
+      return Promise.resolve(copied);
+    });
+    f.readBudget.mockImplementation((id, user) => {
+      const budget = budgets.find(
+        (row) =>
+          row._id.equals(id) && row.userId.equals(user) && !row.isDeleted,
+      );
+      if (!budget) return Promise.reject(new NotFoundException());
+      const actuals = { actualsComplete: true, currencyIssues: [] };
+      return Promise.resolve({
+        ...budget.toObject(),
+        ...actuals,
+        actualsCurrency: 'DOP',
+        currencyContextResolved: true,
+        items: items
+          .filter((item) => item.budgetId.equals(id))
+          .map((item) => ({
+            ...item.toObject(),
+            ...actuals,
+            spent: 0,
+            spentCurrency: 'DOP',
+          })),
+      });
+    });
+    return {
+      ...f,
+      abortNext: () => {
+        abort = true;
+      },
+      rows: () => ({ budgets, items }),
+    };
+  }
+
+  const keyedPlan = { ...request, operationKey: 'synthetic-key_01' };
+  const emptyDraft = { ...keyedPlan, status: 'draft' };
+
+  it.each(['copy', 'empty'])(
+    'FE5 TC12 recovers one %s draft from overlapping calls and a failed response read',
+    async (route) => {
+      const f = draftPersistence();
+      f.readBudget.mockRejectedValueOnce(new Error('Read failed after commit'));
+      const create = () =>
+        route === 'copy'
+          ? f.service.copyDraft(String(sourceId), String(owner), keyedPlan)
+          : f.service.create(String(owner), { ...emptyDraft, items: [] });
+      const [lost, recovered] = await Promise.allSettled([create(), create()]);
+      expect(lost).toMatchObject({
+        status: 'rejected',
+        reason: new Error('Read failed after commit'),
+      });
+      expect(recovered.status).toBe('fulfilled');
+      if (recovered.status !== 'fulfilled') throw new Error('Replay failed');
+      expect(f.rows().budgets).toHaveLength(1);
+      expect(f.rows().items).toHaveLength(route === 'copy' ? 1 : 0);
+
+      f.rows().budgets[0].name = 'Later edit';
+      f.state.source.isDeleted = true;
+      const replay = await create();
+      expect(replay._id).toEqual(recovered.value._id);
+      expect(replay.items.map((item) => item._id)).toEqual(
+        recovered.value.items.map((item) => item._id),
+      );
+      expect(replay.name).toBe('Later edit');
+      expect(f.save).toHaveBeenCalledTimes(1);
+
+      f.rows().budgets[0].isDeleted = true;
+      await expect(create()).rejects.toMatchObject({ status: 404 });
+      expect(f.save).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('FE5 TC12 binds keys to owner, source, route and normalized validated plan', async () => {
+    const f = draftPersistence();
+    const user = String(owner);
+    const source = String(sourceId);
+    const plan = { ...keyedPlan, endDate: '2025-03-01' };
+    const saved = await f.service.copyDraft(source, user, plan);
+    const equivalent = await f.service.copyDraft(source.toUpperCase(), user, {
+      ...keyedPlan,
+      startDate: '2025-02-02T00:00:00-04:00',
+      plannedEndDate: '2025-03-01T00:00:00Z',
+      currency: 'DOP',
+    });
+    expect(equivalent._id).toEqual(saved._id);
+    const conflicts = [
+      f.service.copyDraft(source, user, { ...plan, name: 'Changed plan' }),
+      f.service.copyDraft(String(new Types.ObjectId()), user, plan),
+      f.service.create(user, emptyDraft),
+    ];
+    await Promise.all(
+      conflicts.map((conflict) =>
+        expect(conflict).rejects.toMatchObject({
+          status: 409,
+          response: { code: 'draft_operation_conflict' },
+        }),
+      ),
+    );
+    const other = String(new Types.ObjectId());
+    await expect(
+      f.service.copyDraft(source, other, plan),
+    ).rejects.toMatchObject({ status: 404 });
+    const separateOwner = await f.service.create(other, emptyDraft);
+    const sameOwnerNewAttempt = await f.service.create(user, {
+      ...emptyDraft,
+      operationKey: 'separate-key',
+    });
+    expect(separateOwner._id).not.toEqual(saved._id);
+    expect(sameOwnerNewAttempt._id).not.toEqual(saved._id);
+    expect(f.rows().budgets).toHaveLength(3);
+  });
+
+  it.each(['copy', 'empty'])(
+    'FE5 TC12 retries %s after an uncommitted write',
+    async (route) => {
+      const f = draftPersistence();
+      const create = () =>
+        route === 'copy'
+          ? f.service.copyDraft(String(sourceId), String(owner), keyedPlan)
+          : f.service.create(String(owner), emptyDraft);
+      f.abortNext();
+      await expect(create()).rejects.toMatchObject({ status: 503 });
+      expect(f.rows()).toEqual({ budgets: [], items: [] });
+      expect(f.readBudget).not.toHaveBeenCalled();
+      const saved = await create();
+      expect((await create())._id).toEqual(saved._id);
+      expect(f.rows().budgets).toHaveLength(1);
+      expect(f.rows().items).toHaveLength(route === 'copy' ? 1 : 0);
+    },
+  );
+
+  it('FE5 TC12 rejects keyed nonempty and active POST while preserving no-key creation', async () => {
+    const f = draftPersistence();
+    const user = String(owner);
+    const items = [{ name: 'Groceries', type: 'expense', plannedAmount: 25 }];
+    await expect(
+      f.service.create(user, { ...emptyDraft, items }),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      f.service.create(user, { ...emptyDraft, status: 'active' }),
+    ).rejects.toMatchObject({ status: 400 });
+    const first = await f.service.create(user, {
+      ...request,
+      status: 'draft',
+      items,
+    });
+    const second = await f.service.create(user, {
+      ...request,
+      status: 'draft',
+    });
+    expect(first._id).not.toEqual(second._id);
+    expect(f.rows().items).toHaveLength(1);
+  });
 
   it.each(['active', 'closed'])(
     'TC1–TC3 copies only scoped live configuration from a %s source',
