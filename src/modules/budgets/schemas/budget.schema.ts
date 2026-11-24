@@ -10,6 +10,12 @@ export type BudgetDocument = HydratedDocument<Budget>;
 
 @Schema({ timestamps: true })
 export class Budget {
+  @Prop({ select: false, immutable: true })
+  draftOperationKey?: string;
+
+  @Prop({ select: false, immutable: true })
+  draftOperationFingerprint?: string;
+
   @Prop({ type: BudgetCurrencyContextSchema })
   currencyContext?: BudgetCurrencyContext;
 
@@ -55,6 +61,15 @@ export class Budget {
 }
 
 export const BudgetSchema = SchemaFactory.createForClass(Budget);
+// Keep keys reserved after soft deletion so a retry cannot recreate the draft.
+BudgetSchema.index(
+  { userId: 1, draftOperationKey: 1 },
+  {
+    name: 'one_draft_creation_operation_per_owner',
+    unique: true,
+    partialFilterExpression: { draftOperationKey: { $exists: true } },
+  },
+);
 BudgetSchema.index(
   { userId: 1 },
   {

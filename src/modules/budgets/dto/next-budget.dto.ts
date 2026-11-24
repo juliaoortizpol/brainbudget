@@ -1,7 +1,8 @@
 import { PickType, PartialType } from '@nestjs/mapped-types';
-import { CreateBudgetDto } from './create-budget.dto';
+import { CreateBudgetDto, CreateBudgetRequestDto } from './create-budget.dto';
 
-export class CopyBudgetDraftDto extends PickType(CreateBudgetDto, [
+export class CopyBudgetDraftDto extends PickType(CreateBudgetRequestDto, [
+  'operationKey',
   'name',
   'periodType',
   'startDate',

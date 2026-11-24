@@ -12,7 +12,10 @@ import {
   HttpCode,
 } from '@nestjs/common';
 import { BudgetsService } from './budgets.service';
-import { CreateBudgetDto, CreateBudgetItemDto } from './dto/create-budget.dto';
+import {
+  CreateBudgetItemDto,
+  CreateBudgetRequestDto,
+} from './dto/create-budget.dto';
 import { UpdateBudgetDto } from './dto/update-budget.dto';
 import { UpdateBudgetItemDto } from './dto/update-budget-item.dto';
 import { JwtAuthGuard } from '@/common/guards/jwt-auth.guard';
@@ -26,7 +29,7 @@ export class BudgetsController {
   @Post()
   create(
     @Request() req: AuthenticatedRequest,
-    @Body() createBudgetDto: CreateBudgetDto,
+    @Body() createBudgetDto: CreateBudgetRequestDto,
   ) {
     return this.budgetsService.create(req.user.userId, createBudgetDto);
   }
